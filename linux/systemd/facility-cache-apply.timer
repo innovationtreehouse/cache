@@ -1,0 +1,11 @@
+[Unit]
+Description=Re-check facility cache client settings
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=facility-cache-apply.service
+
+[Install]
+WantedBy=timers.target

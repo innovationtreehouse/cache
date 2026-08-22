@@ -1,0 +1,88 @@
+#!/bin/bash
+# Exit 0 if this machine is on the facility LAN and the cache host is ours.
+# Optional: --port N also requires that TCP port open on EXPECTED_IP.
+set -euo pipefail
+
+LIB="$(cd "$(dirname "$0")/../lib" && pwd)/common.sh"
+if [[ -r /usr/local/lib/facility-cache/common.sh ]]; then
+  # shellcheck disable=SC1091
+  source /usr/local/lib/facility-cache/common.sh
+elif [[ -r "$LIB" ]]; then
+  # shellcheck disable=SC1090
+  source "$LIB"
+else
+  echo "facility-cache-probe: common.sh not found" >&2
+  exit 2
+fi
+
+PORT=""
+JSON=0
+VERBOSE=0
+
+usage() {
+  cat <<EOF
+Usage: facility-cache-probe [--port PORT] [--json] [-v]
+
+Exit 0 if ${CACHE_HOST} resolves to ${EXPECTED_IP}
+(and PORT is open, if given). Exit 1 otherwise.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --port) PORT="${2:-}"; shift 2 ;;
+    --json) JSON=1; shift ;;
+    -v|--verbose) VERBOSE=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "unknown arg: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+IPS="$(resolve_cache_ips | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+DNS_OK=0
+dns_matches_expected && DNS_OK=1
+
+PORT_OK=""
+if [[ -n "$PORT" ]]; then
+  PORT_OK=0
+  if [[ "$DNS_OK" -eq 1 ]] && port_open "$PORT"; then
+    PORT_OK=1
+  fi
+fi
+
+if [[ "$JSON" -eq 1 ]]; then
+  python3 - "$CACHE_HOST" "$EXPECTED_IP" "$IPS" "$DNS_OK" "$PORT" "$PORT_OK" <<'PY'
+import json, sys
+host, expected, ips, dns_ok, port, port_ok = sys.argv[1:7]
+out = {
+    "host": host,
+    "expected_ip": expected,
+    "resolved": [i for i in ips.split() if i],
+    "dns_ok": dns_ok == "1",
+}
+if port:
+    out["port"] = int(port)
+    out["port_ok"] = port_ok == "1"
+json.dump(out, sys.stdout)
+print()
+PY
+fi
+
+if [[ "$VERBOSE" -eq 1 && "$JSON" -eq 0 ]]; then
+  echo "host: $CACHE_HOST"
+  echo "expected: $EXPECTED_IP"
+  echo "resolved: ${IPS:-none}"
+  echo "dns_ok: $DNS_OK"
+  if [[ -n "$PORT" ]]; then
+    echo "port: $PORT"
+    echo "port_ok: $PORT_OK"
+  fi
+fi
+
+if [[ "$DNS_OK" -ne 1 ]]; then
+  exit 1
+fi
+if [[ -n "$PORT" && "$PORT_OK" != "1" ]]; then
+  exit 1
+fi
+exit 0

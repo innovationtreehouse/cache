@@ -1,0 +1,27 @@
+#!/bin/bash
+# APT Proxy-Auto-Detect helper. Prints one line: proxy URI or DIRECT.
+# apt may pass a URI as $1; ignored except we still require port 3142.
+# stdout is parsed by apt — never log there.
+set -u
+
+_LIB=""
+if [[ -r /usr/local/lib/facility-cache/common.sh ]]; then
+  _LIB=/usr/local/lib/facility-cache/common.sh
+else
+  _LIB="$(cd "$(dirname "$0")/../lib" 2>/dev/null && pwd)/common.sh"
+fi
+if [[ -n "$_LIB" && -r "$_LIB" ]]; then
+  # shellcheck disable=SC1090
+  source "$_LIB"
+else
+  echo DIRECT
+  exit 0
+fi
+
+if on_facility "$APT_PORT"; then
+  apt_proxy_url
+  echo
+else
+  echo DIRECT
+fi
+exit 0

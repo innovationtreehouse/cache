@@ -1,0 +1,12 @@
+{
+  "CacheHost": "cache.facility.innovationtreehouse.org",
+  "ExpectedIp": "192.168.1.200",
+  "AptPort": 3142,
+  "PypiPort": 3141,
+  "NpmPort": 4873,
+  "DockerHubPort": 5000,
+  "DockerGhcrPort": 5001,
+  "ProbeTimeoutMs": 1000,
+  "GitHubRepo": "innovationtreehouse/cache",
+  "AutoUpdate": true
+}

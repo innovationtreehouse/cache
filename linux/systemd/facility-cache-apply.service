@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply Innovation Treehouse facility cache client settings
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/facility-cache-apply
+
+[Install]
+WantedBy=multi-user.target

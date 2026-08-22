@@ -1,0 +1,277 @@
+#!/bin/bash
+# Enable pip/npm/uv cache drop-ins when on the facility LAN; remove them elsewhere.
+# apt uses Proxy-Auto-Detect at use time and is not toggled here.
+# Docker mirrors stay in daemon.json always (engine falls back to docker.io).
+set -euo pipefail
+
+_LIB=""
+if [[ -r /usr/local/lib/facility-cache/common.sh ]]; then
+  _LIB=/usr/local/lib/facility-cache/common.sh
+else
+  _LIB="$(cd "$(dirname "$0")/../lib" 2>/dev/null && pwd)/common.sh"
+fi
+if [[ -n "$_LIB" && -r "$_LIB" ]]; then
+  # shellcheck disable=SC1090
+  source "$_LIB"
+else
+  echo "facility-cache-apply: common.sh not found" >&2
+  exit 2
+fi
+
+_UI=""
+if [[ -r /usr/local/lib/facility-cache/ui.sh ]]; then
+  _UI=/usr/local/lib/facility-cache/ui.sh
+else
+  _UI="$(cd "$(dirname "$0")/../lib" 2>/dev/null && pwd)/ui.sh"
+fi
+if [[ -n "$_UI" && -r "$_UI" ]]; then
+  # shellcheck disable=SC1090
+  source "$_UI"
+fi
+
+PIP_CONF="${PIP_CONF:-/etc/pip.conf}"
+PIP_CONF_FALLBACK="/etc/xdg/pip/pip.conf"
+NPMRC="${NPMRC:-/etc/npmrc}"
+UV_TOML="${UV_TOML:-/etc/uv/uv.toml}"
+ENV_DROPIN="${ENV_DROPIN:-/etc/environment.d/60-facility-cache.conf}"
+
+STATUS=0
+DRY_RUN=0
+
+usage() {
+  cat <<EOF
+Usage: facility-cache-apply [--status] [--dry-run]
+
+Writes or removes pip/npm/uv config so those tools use
+${CACHE_HOST} only while this machine is on the facility LAN.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --status) STATUS=1; shift ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "unknown arg: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+choose_pip_path() {
+  if [[ -f "$PIP_CONF" ]] && ! file_is_managed "$PIP_CONF"; then
+    printf '%s' "$PIP_CONF_FALLBACK"
+  else
+    printf '%s' "$PIP_CONF"
+  fi
+}
+
+_svc_line() {
+  local name="$1" port="$2" detail="$3" dns="$4"
+  local st="off" kind=off
+  if [[ "$dns" == yes ]] && port_open "$port"; then
+    st="on"
+    kind=on
+  fi
+  ui_kv "$name" "$(printf '%-8s :%-5s  %s' "$st" "$port" "$detail")" "$kind"
+}
+
+print_status() {
+  local ips dns_ok ver="unknown" net="off-site" netkind=off
+  ips="$(resolve_cache_ips | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  dns_ok=no
+  if dns_matches_expected; then
+    dns_ok=yes
+    net="on-site"
+    netkind=on
+  elif [[ -n "$ips" ]]; then
+    net="wrong address"
+    netkind=fail
+  fi
+  [[ -r "$VERSION_FILE" ]] && ver="$(tr -d ' v\n' <"$VERSION_FILE")"
+  ui_init status
+  ui_banner "facility-cache-client" "v${ver}"
+  ui_kv "network" "$net" "$netkind"
+  ui_kv "host" "$CACHE_HOST"
+  ui_kv "expect" "$EXPECTED_IP"
+  ui_kv "resolved" "${ips:-none}" "$([[ "$dns_ok" == yes ]] && echo ok || echo fail)"
+  printf '\n'
+  _svc_line apt "$APT_PORT" "apt-cacher-ng · auto-detect" "$dns_ok"
+  _svc_line pypi "$PYPI_PORT" "devpi / pip / uv" "$dns_ok"
+  _svc_line npm "$NPM_PORT" "verdaccio" "$dns_ok"
+  _svc_line docker "$DOCKER_HUB_PORT" "hub pull-through" "$dns_ok"
+  _svc_line ghcr "$DOCKER_GHCR_PORT" "not a transparent mirror" "$dns_ok"
+  printf '\n'
+  local pip_st=absent npm_st=absent uv_st=absent
+  [[ -f "$(choose_pip_path)" ]] && pip_st=present
+  [[ -f "$NPMRC" ]] && npm_st=present
+  [[ -f "$UV_TOML" ]] && uv_st=present
+  ui_kv "pip" "$pip_st  $(choose_pip_path)" "$([[ $pip_st == present ]] && echo on || echo off)"
+  ui_kv "npm" "$npm_st  $NPMRC" "$([[ $npm_st == present ]] && echo on || echo off)"
+  ui_kv "uv" "$uv_st  $UV_TOML" "$([[ $uv_st == present ]] && echo on || echo off)"
+  printf '\n'
+  local auto_k=on
+  [[ "$AUTO_UPDATE" == 0 || "$AUTO_UPDATE" == false ]] && auto_k=off
+  ui_kv "updates" "auto=${AUTO_UPDATE}" "$auto_k"
+  ui_kv "repo" "$GITHUB_REPO"
+  if [[ -r "$STATE_FILE" ]]; then
+    python3 - "$STATE_FILE" <<'PY' 2>/dev/null || true
+import json, sys
+st = json.load(open(sys.argv[1]))
+last = st.get("last_result") or "—"
+when = st.get("updated_at") or ""
+ver = st.get("latest_version") or st.get("installed_version") or ""
+print(f"{last}  {ver}  {when}")
+PY
+  else
+    printf '%s\n' "never"
+  fi | {
+    IFS= read -r line || true
+    ui_kv "last" "${line:-never}"
+  }
+  ui_kv "log" "$(ui_log_path)"
+  printf '\n'
+}
+
+if [[ "$STATUS" -eq 1 ]]; then
+  print_status
+  exit 0
+fi
+
+PYPI_ON=0
+NPM_ON=0
+if dns_matches_expected; then
+  port_open "$PYPI_PORT" && PYPI_ON=1
+  port_open "$NPM_PORT" && NPM_ON=1
+fi
+
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  ui_init apply
+  if [[ -t 1 ]]; then
+    ui_banner "facility-cache-client" "apply  dry-run"
+    ui_kv "dns" "$(dns_matches_expected && echo ok || echo miss)"
+    ui_kv "pypi" "$PYPI_ON"
+    ui_kv "npm" "$NPM_ON"
+    printf '\n'
+  fi
+  exit 0
+fi
+
+if [[ "$(id -u)" -ne 0 ]]; then
+  ui_init apply
+  ui_fail "need root — re-run with sudo"
+  exit 1
+fi
+
+PIP_PATH="$(choose_pip_path)"
+
+mkdir -p "$RUN_DIR"
+# /run is tmpfs: world-readable env for profile.d, not secrets.
+chmod 755 "$RUN_DIR"
+
+write_pip() {
+  write_managed "$PIP_PATH" <<EOF
+# ${MANAGED_MARKER} — do not edit; facility-cache-apply rewrites this.
+[global]
+index-url = $(pypi_index_url)
+trusted-host = ${CACHE_HOST}
+EOF
+}
+
+write_npm() {
+  if [[ -f "$NPMRC" ]] && ! file_is_managed "$NPMRC"; then
+    return 0
+  fi
+  write_managed "$NPMRC" <<EOF
+# ${MANAGED_MARKER} — do not edit; facility-cache-apply rewrites this.
+registry=$(npm_registry_url)
+EOF
+}
+
+write_uv() {
+  if [[ -f "$UV_TOML" ]] && ! file_is_managed "$UV_TOML"; then
+    return 0
+  fi
+  write_managed "$UV_TOML" <<EOF
+# ${MANAGED_MARKER} — do not edit; facility-cache-apply rewrites this.
+index-url = "$(pypi_index_url)"
+allow-insecure-host = ["${CACHE_HOST}"]
+EOF
+}
+
+write_env_files() {
+  local tmp
+  tmp="$(mktemp)"
+  {
+    echo "# ${MANAGED_MARKER}"
+    if [[ "$PYPI_ON" -eq 1 ]]; then
+      echo "PIP_INDEX_URL=$(pypi_index_url)"
+      echo "PIP_TRUSTED_HOST=${CACHE_HOST}"
+      echo "UV_INDEX_URL=$(pypi_index_url)"
+      echo "UV_INSECURE_HOST=${CACHE_HOST}"
+    fi
+    if [[ "$NPM_ON" -eq 1 ]]; then
+      echo "NPM_CONFIG_REGISTRY=$(npm_registry_url)"
+    fi
+  } >"$tmp"
+
+  # profile.d: exported vars for interactive shells
+  {
+    echo "# ${MANAGED_MARKER}"
+    if [[ "$PYPI_ON" -eq 1 ]]; then
+      echo "export PIP_INDEX_URL=$(pypi_index_url)"
+      echo "export PIP_TRUSTED_HOST=${CACHE_HOST}"
+      echo "export UV_INDEX_URL=$(pypi_index_url)"
+      echo "export UV_INSECURE_HOST=${CACHE_HOST}"
+    fi
+    if [[ "$NPM_ON" -eq 1 ]]; then
+      echo "export NPM_CONFIG_REGISTRY=$(npm_registry_url)"
+    fi
+  } >"$ENV_FILE"
+  chmod 644 "$ENV_FILE"
+
+  mkdir -p "$(dirname "$ENV_DROPIN")"
+  if [[ "$PYPI_ON" -eq 1 || "$NPM_ON" -eq 1 ]]; then
+    # systemd environment.d: KEY=VALUE, no export
+    grep -v '^#' "$tmp" | grep -v '^$' >"$ENV_DROPIN" || true
+    if [[ ! -s "$ENV_DROPIN" ]]; then
+      rm -f "$ENV_DROPIN"
+    fi
+  else
+    rm -f "$ENV_DROPIN"
+  fi
+  rm -f "$tmp"
+}
+
+if [[ "$PYPI_ON" -eq 1 ]]; then
+  write_pip
+  write_uv
+  : >"$STAMP_FILE"
+else
+  remove_managed "$PIP_PATH"
+  remove_managed "$PIP_CONF_FALLBACK"
+  remove_managed "$UV_TOML"
+  rm -f "$STAMP_FILE"
+fi
+
+if [[ "$NPM_ON" -eq 1 ]]; then
+  write_npm
+else
+  remove_managed "$NPMRC"
+fi
+
+write_env_files
+
+ui_init apply
+ui_log info apply "pypi=$PYPI_ON npm=$NPM_ON dns=$(dns_matches_expected && echo ok || echo miss)"
+if [[ -t 1 ]]; then
+  ui_banner "facility-cache-client" "apply"
+  if dns_matches_expected; then
+    ui_kv "network" "on-site" on
+  else
+    ui_kv "network" "off-site · public registries" off
+  fi
+  ui_kv "pypi" "$([[ $PYPI_ON -eq 1 ]] && echo enabled || echo public)" "$([[ $PYPI_ON -eq 1 ]] && echo on || echo off)"
+  ui_kv "npm" "$([[ $NPM_ON -eq 1 ]] && echo enabled || echo public)" "$([[ $NPM_ON -eq 1 ]] && echo on || echo off)"
+  ui_kv "apt" "auto-detect at use time" work
+  printf '\n'
+fi
+exit 0

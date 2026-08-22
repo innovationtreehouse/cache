@@ -1,0 +1,4 @@
+// Use the facility apt-cacher-ng only when it is reachable.
+// Off-site this command prints DIRECT and apt talks to Ubuntu/Debian mirrors.
+Acquire::http::Proxy-Auto-Detect "/usr/local/bin/facility-apt-proxy";
+Acquire::https::Proxy-Auto-Detect "/usr/local/bin/facility-apt-proxy";
