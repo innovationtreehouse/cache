@@ -9,6 +9,13 @@ elif [[ -r /usr/local/lib/facility-cache/ui.sh ]]; then
   # shellcheck source=/dev/null
   source /usr/local/lib/facility-cache/ui.sh
 fi
+if [[ -r "$HERE/lib/common.sh" ]]; then
+  # shellcheck source=/dev/null
+  source "$HERE/lib/common.sh"
+elif [[ -r /usr/local/lib/facility-cache/common.sh ]]; then
+  # shellcheck source=/dev/null
+  source /usr/local/lib/facility-cache/common.sh
+fi
 
 ui_init uninstall 4
 ui_banner "facility-cache-client" "uninstall"
@@ -48,6 +55,8 @@ rm -f /usr/local/sbin/facility-cache-update
 rm -rf /usr/local/lib/facility-cache
 rm -rf /run/facility-cache
 rm -rf /var/lib/facility-cache
+# self: safe to unlink while running — bash keeps the open fd on this file
+rm -f /usr/local/sbin/facility-cache-uninstall
 for f in /etc/pip.conf /etc/xdg/pip/pip.conf /etc/npmrc /etc/uv/uv.toml /etc/environment.d/60-facility-cache.conf; do
   if [[ -f "$f" ]] && grep -q facility-cache-managed "$f"; then
     rm -f "$f"
@@ -58,34 +67,55 @@ ui_step_ok "client files removed"
 ui_step "docker" "registry-mirrors"
 if [[ "$KEEP_DOCKER" -eq 1 ]]; then
   ui_step_skip "kept (--keep-docker)"
+elif ! command -v python3 >/dev/null 2>&1; then
+  ui_step_skip "python3 not found"
 else
-  python3 - <<'PY'
+  # Prefer restoring the exact pre-install daemon.json from the backup merge_docker()
+  # wrote in install.sh. Only fall back to stripping our known entries by value when
+  # there's no backup (installs from before this fix, or nothing to restore).
+  docker_result="$(python3 - "$(docker_hub_mirror)" "$(docker_hub_insecure)" "$(docker_ghcr_insecure)" <<'PY'
 import json
+import sys
 from pathlib import Path
 
+mirror, hub_insecure, ghcr_insecure = sys.argv[1:4]
 path = Path("/etc/docker/daemon.json")
-host = "cache.facility.innovationtreehouse.org"
-mirror = f"http://{host}:5000"
-insecure = {f"{host}:5000", f"{host}:5001"}
-if not path.exists():
-    raise SystemExit(0)
-data = json.loads(path.read_text() or "{}")
-mirrors = [m for m in (data.get("registry-mirrors") or []) if m != mirror]
-regs = [r for r in (data.get("insecure-registries") or []) if r not in insecure]
-if mirrors:
-    data["registry-mirrors"] = mirrors
+backup = Path("/etc/docker/daemon.json.facility-cache.bak")
+insecure = {hub_insecure, ghcr_insecure}
+
+if backup.exists():
+    path.write_text(backup.read_text())
+    backup.unlink()
+    print("restored")
+elif path.exists():
+    data = json.loads(path.read_text() or "{}")
+    mirrors = [m for m in (data.get("registry-mirrors") or []) if m != mirror]
+    regs = [r for r in (data.get("insecure-registries") or []) if r not in insecure]
+    if mirrors:
+        data["registry-mirrors"] = mirrors
+    else:
+        data.pop("registry-mirrors", None)
+    if regs:
+        data["insecure-registries"] = regs
+    else:
+        data.pop("insecure-registries", None)
+    if data:
+        path.write_text(json.dumps(data, indent=2) + "\n")
+    else:
+        path.unlink()
+    print("stripped")
 else:
-    data.pop("registry-mirrors", None)
-if regs:
-    data["insecure-registries"] = regs
-else:
-    data.pop("insecure-registries", None)
-if data:
-    path.write_text(json.dumps(data, indent=2) + "\n")
-else:
-    path.unlink()
+    print("absent")
 PY
-  ui_step_ok "facility mirrors stripped"
+  )"
+  case "$docker_result" in
+    restored) ui_step_ok "daemon.json restored from pre-install backup" ;;
+    stripped) ui_step_ok "facility mirrors stripped" ;;
+    *)        ui_step_ok "no daemon.json changes to undo" ;;
+  esac
+  if [[ "$docker_result" == restored || "$docker_result" == stripped ]]; then
+    ui_note "dockerd must be restarted to pick this up"
+  fi
 fi
 
 ui_step "keep" "local config"

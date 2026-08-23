@@ -8,7 +8,7 @@ $module = Join-Path $dest 'FacilityCache.psm1'
 if (Test-Path $module) {
     Import-Module $module -Force
     Write-FcHeader 'facility-cache-client' 'uninstall'
-    $script:FcStepN = 4
+    $script:FcStepN = 5
     Write-FcStep 'policy' 'Delivery Optimization'
     Remove-DeliveryOptimizationDhcpDiscovery
     Write-FcStepOk 'DOCacheHostSource removed'
@@ -55,7 +55,17 @@ foreach ($path in @(
 
 $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
 if ($npmCmd) {
-    & npm config delete registry --location=global 2>$null
+    # Same guard as Invoke-FacilityCacheApply's revert path: only clear the global
+    # registry if it's still pointed at ours, never someone else's configured value.
+    $npmRegistry = $null
+    if (Get-Command Get-FacilityCacheConfig -ErrorAction SilentlyContinue) {
+        $fcCfg = Get-FacilityCacheConfig
+        $npmRegistry = "http://$($fcCfg.CacheHost):$($fcCfg.NpmPort)/"
+    }
+    $currentRegistry = (& npm config get registry --location=global 2>$null)
+    if ($npmRegistry -and $currentRegistry -and $currentRegistry.Trim() -eq $npmRegistry) {
+        & npm config delete registry --location=global 2>$null
+    }
 }
 
 $logHint = $null
@@ -65,13 +75,21 @@ if (Get-Command Get-FacilityCacheLogPath -ErrorAction SilentlyContinue) {
 
 Write-FcStep 'files' $dest
 if (Test-Path $dest) {
-    Remove-Item -LiteralPath $dest -Recurse -Force
+    # logs\ and config.json live inside the same ProgramData folder as the binaries —
+    # keep them (config.json mirrors Linux keeping /etc/facility-cache/config; logs\
+    # mirrors Linux leaving /var/log/facility-cache/ alone).
+    Get-ChildItem -LiteralPath $dest -Force |
+        Where-Object { $_.Name -notin @('logs', 'config.json') } |
+        Remove-Item -Recurse -Force
 }
-Write-FcStepOk 'ProgramData client removed'
+Write-FcStepOk 'client files removed'
+
+Write-FcStep 'keep' 'local config'
+Write-FcStepOk "$(Join-Path $dest 'config.json') left in place"
 
 if (Get-Command Write-FcFinish -ErrorAction SilentlyContinue) {
     Write-FcFinish -Ok $true -Message 'uninstalled'
-    if ($logHint) { Write-FcNote "logs remain at $logHint until that folder is deleted" }
+    if ($logHint) { Write-FcNote "logs remain at $logHint" }
 } else {
     Write-Host 'Uninstalled facility-cache client.'
 }

@@ -35,11 +35,11 @@ sudo ./linux/install.sh
 
 Options: `--no-docker`, `--no-restart-docker`.
 
-Uninstall:
+Uninstall (installed clients don't need the checkout — `uninstall.sh` ships to `/usr/local/sbin/facility-cache-uninstall`):
 
 ```bash
-sudo ./linux/uninstall.sh
-sudo ./linux/uninstall.sh --keep-docker
+sudo facility-cache uninstall
+sudo facility-cache uninstall --keep-docker
 ```
 
 Local overrides (kept across updates): `/etc/facility-cache/config`

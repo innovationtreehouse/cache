@@ -75,6 +75,7 @@ install -m 0755 "${HERE}/bin/facility-cache-probe" "${PREFIX}/bin/facility-cache
 install -m 0755 "${HERE}/bin/facility-apt-proxy" "${PREFIX}/bin/facility-apt-proxy"
 install -m 0755 "${HERE}/sbin/facility-cache-apply" "${PREFIX}/sbin/facility-cache-apply"
 install -m 0755 "${HERE}/sbin/facility-cache-update" "${PREFIX}/sbin/facility-cache-update"
+install -m 0755 "${HERE}/uninstall.sh" "${PREFIX}/sbin/facility-cache-uninstall"
 ui_step_ok "v${VER} → ${PREFIX}"
 
 ui_step "apt" "proxy auto-detect"
