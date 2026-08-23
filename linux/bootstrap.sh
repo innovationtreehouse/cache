@@ -4,13 +4,23 @@ set -euo pipefail
 
 # Minimal visuals before the package (and ui.sh) is on disk.
 if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-}" != "dumb" ]]; then
-  BOLD=$'\033[1m'; DIM=$'\033[2m'; CYN=$'\033[36m'; GRN=$'\033[32m'; RED=$'\033[31m'; RST=$'\033[0m'
+  BOLD=$'\033[1m'
+  DIM=$'\033[2m'
+  CYN=$'\033[36m'
+  GRN=$'\033[32m'
+  RED=$'\033[31m'
+  RST=$'\033[0m'
 else
-  BOLD=""; DIM=""; CYN=""; GRN=""; RED=""; RST=""
+  BOLD=""
+  DIM=""
+  CYN=""
+  GRN=""
+  RED=""
+  RST=""
 fi
 say() { printf '  %s\n' "$*"; }
-ok()  { printf '  %s%s%s %s\n' "$GRN" "✓" "$RST" "$*"; }
-fail(){ printf '  %s%s%s %s\n' "$RED" "✗" "$RST" "$*"; }
+ok() { printf '  %s%s%s %s\n' "$GRN" "✓" "$RST" "$*"; }
+fail() { printf '  %s%s%s %s\n' "$RED" "✗" "$RST" "$*"; }
 
 printf '\n  %s%s%s  %s\n' "$BOLD$CYN" "facility-cache-client" "$RST" "${DIM}bootstrap from GitHub${RST}"
 printf '  %s\n' "${DIM}────────────────────────────────────────${RST}"
