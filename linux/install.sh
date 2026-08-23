@@ -65,6 +65,7 @@ install -d -m 0755 "${PREFIX}/lib/facility-cache" "${PREFIX}/bin" "${PREFIX}/sbi
 # a plain rename), then move it all into place in one quick pass. A failure
 # while staging (disk full, bad tarball, killed mid-copy) never touches the
 # live install; set -e + this trap unwinds to the old, fully-working files.
+rm -rf "${PREFIX}"/.facility-cache-stage.* 2>/dev/null || true
 STAGE="$(mktemp -d "${PREFIX}/.facility-cache-stage.XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT
 install -d -m 0755 "${STAGE}/lib" "${STAGE}/bin" "${STAGE}/sbin"

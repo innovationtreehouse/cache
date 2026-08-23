@@ -16,7 +16,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: ShellCheck (preinstalled on ubuntu-latest)
-        run: find linux -type f -name '*.sh' -print0 | xargs -0 shellcheck
+        # Several scripts (linux/bin/*, facility-cache-apply) are bash but have
+        # no .sh extension; match by shebang too so they aren't silently skipped.
+        run: |
+          files="$( { find linux -type f -name '*.sh'
+                      grep -rlE '^#!.*/(bash|sh)$' linux --binary-files=without-match --exclude-dir=__pycache__ --exclude='*.sh'
+                    } | sort -u)"
+          shellcheck $files
 
       - name: PSScriptAnalyzer (pwsh preinstalled on ubuntu-latest)
         shell: pwsh

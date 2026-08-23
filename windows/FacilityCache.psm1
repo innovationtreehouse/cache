@@ -670,9 +670,22 @@ function Update-FacilityCacheClient {
         $ghCmd = Get-Command gh -ErrorAction SilentlyContinue
         if ($ghCmd) {
             try {
-                if ($cfg.GitHubToken) { $env:GH_TOKEN = $cfg.GitHubToken }
-                & $ghCmd.Path attestation verify $zip --repo $repo *> $null
-                $attested = ($LASTEXITCODE -eq 0)
+                # Process.Start + WaitForExit(timeout), not `&`, so a wedged gh
+                # can't hang this scheduled task forever, and GH_TOKEN is set
+                # only for this child process rather than the whole session.
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = $ghCmd.Path
+                $psi.Arguments = "attestation verify `"$zip`" --repo $repo"
+                $psi.UseShellExecute = $false
+                $psi.RedirectStandardOutput = $true
+                $psi.RedirectStandardError = $true
+                if ($cfg.GitHubToken) { $psi.EnvironmentVariables['GH_TOKEN'] = $cfg.GitHubToken }
+                $proc = [System.Diagnostics.Process]::Start($psi)
+                if ($proc.WaitForExit(30000)) {
+                    $attested = ($proc.ExitCode -eq 0)
+                } else {
+                    $proc.Kill()
+                }
             } catch {
                 $attested = $false
             }
