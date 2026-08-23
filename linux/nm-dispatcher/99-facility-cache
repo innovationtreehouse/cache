@@ -2,10 +2,10 @@
 # NetworkManager dispatcher: re-evaluate cache drop-ins on link change.
 # Must return quickly; apply runs in the background.
 case "${2:-}" in
-  up|down|dhcp4-change|dhcp6-change|connectivity-change)
-    if [[ -x /usr/local/sbin/facility-cache-apply ]]; then
-      /usr/local/sbin/facility-cache-apply >/dev/null 2>&1 &
-    fi
-    ;;
+up | down | dhcp4-change | dhcp6-change | connectivity-change)
+  if [[ -x /usr/local/sbin/facility-cache-apply ]]; then
+    /usr/local/sbin/facility-cache-apply >/dev/null 2>&1 &
+  fi
+  ;;
 esac
 exit 0
