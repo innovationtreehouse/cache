@@ -6,9 +6,7 @@ on:
     branches: [main]
 
 # Shell files are matched by extension OR bash/sh shebang, same matcher as
-# release.yml's lint job. shfmt temporarily skips linux/install.sh and
-# linux/sbin/facility-cache-apply: both carry heavy in-flight PRs; drop the
-# excludes in a follow-up reformat once that stack lands.
+# release.yml's lint job.
 
 jobs:
   format:
@@ -23,7 +21,6 @@ jobs:
           chmod +x /usr/local/bin/shfmt
           files=$(git ls-files | while read -r f; do
             case "$f" in
-              linux/install.sh|linux/sbin/facility-cache-apply) continue ;;
               *.sh) echo "$f" ;;
               *) head -1 "$f" 2>/dev/null | grep -qE '^#!.*/(bash|sh)( |$)' && echo "$f" || true ;;
             esac
