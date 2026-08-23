@@ -22,16 +22,29 @@ FROM_UPDATE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --no-docker) NO_DOCKER=1; shift ;;
-    --no-restart-docker) NO_RESTART_DOCKER=1; shift ;;
-    --from-update) FROM_UPDATE=1; NO_RESTART_DOCKER=1; shift ;;
-    -h|--help)
-      cat <<EOF
+  --no-docker)
+    NO_DOCKER=1
+    shift
+    ;;
+  --no-restart-docker)
+    NO_RESTART_DOCKER=1
+    shift
+    ;;
+  --from-update)
+    FROM_UPDATE=1
+    NO_RESTART_DOCKER=1
+    shift
+    ;;
+  -h | --help)
+    cat <<EOF
 Usage: sudo $0 [--no-docker] [--no-restart-docker] [--from-update]
 EOF
-      exit 0
-      ;;
-    *) echo "unknown arg: $1" >&2; exit 2 ;;
+    exit 0
+    ;;
+  *)
+    echo "unknown arg: $1" >&2
+    exit 2
+    ;;
   esac
 done
 

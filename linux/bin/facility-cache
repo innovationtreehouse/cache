@@ -39,35 +39,38 @@ UNINSTALL="/usr/local/sbin/facility-cache-uninstall"
 cmd="${1:-status}"
 shift || true
 case "$cmd" in
-  status)     exec "$APPLY" --status "$@" ;;
-  apply)      exec "$APPLY" "$@" ;;
-  probe)      exec "$PROBE" "$@" ;;
-  update)     exec "$UPDATE" "$@" ;;
-  uninstall)  exec "$UNINSTALL" "$@" ;;
-  log)
-    UI_PY="$LIB/facility_ui.py"
-    [[ -r "$UI_PY" ]] || UI_PY="/usr/local/lib/facility-cache/facility_ui.py"
-    exec python3 "$UI_PY" "$@"
-    ;;
-  version|-v|--version)
-    if [[ -r /usr/local/lib/facility-cache/VERSION ]]; then
-      ver="$(tr -d ' \n' </usr/local/lib/facility-cache/VERSION)"
-    else
-      ver="unknown"
-    fi
-    if declare -F ui_banner >/dev/null; then
-      ui_init version
-      ui_banner "facility-cache-client" "v${ver}"
-      ui_kv "version" "$ver" ok
-      ui_kv "log" "$(ui_log_path)"
-      printf '\n'
-    else
-      printf '%s\n' "$ver"
-    fi
-    ;;
-  -h|--help|help) usage; exit 0 ;;
-  *)
-    usage >&2
-    exit 2
-    ;;
+status) exec "$APPLY" --status "$@" ;;
+apply) exec "$APPLY" "$@" ;;
+probe) exec "$PROBE" "$@" ;;
+update) exec "$UPDATE" "$@" ;;
+uninstall) exec "$UNINSTALL" "$@" ;;
+log)
+  UI_PY="$LIB/facility_ui.py"
+  [[ -r "$UI_PY" ]] || UI_PY="/usr/local/lib/facility-cache/facility_ui.py"
+  exec python3 "$UI_PY" "$@"
+  ;;
+version | -v | --version)
+  if [[ -r /usr/local/lib/facility-cache/VERSION ]]; then
+    ver="$(tr -d ' \n' </usr/local/lib/facility-cache/VERSION)"
+  else
+    ver="unknown"
+  fi
+  if declare -F ui_banner >/dev/null; then
+    ui_init version
+    ui_banner "facility-cache-client" "v${ver}"
+    ui_kv "version" "$ver" ok
+    ui_kv "log" "$(ui_log_path)"
+    printf '\n'
+  else
+    printf '%s\n' "$ver"
+  fi
+  ;;
+-h | --help | help)
+  usage
+  exit 0
+  ;;
+*)
+  usage >&2
+  exit 2
+  ;;
 esac

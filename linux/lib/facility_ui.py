@@ -1,4 +1,5 @@
 """Shared terminal UI + JSONL log for facility-cache-client."""
+
 from __future__ import annotations
 
 import json
@@ -88,7 +89,9 @@ class Ui:
                 continue
         return candidates[-1]
 
-    def log(self, level: str, event: str, msg: str, extra: Optional[dict] = None) -> None:
+    def log(
+        self, level: str, event: str, msg: str, extra: Optional[dict] = None
+    ) -> None:
         rec = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "level": level,
@@ -158,7 +161,12 @@ class Ui:
 
     def step(self, name: str, msg: str = "") -> None:
         self.i += 1
-        self.log("info", "step_start", f"{name}: {msg}", {"step": name, "i": self.i, "n": self.n})
+        self.log(
+            "info",
+            "step_start",
+            f"{name}: {msg}",
+            {"step": name, "i": self.i, "n": self.n},
+        )
         prefix = f"{self.i}/{self.n}  " if self.n else ""
         self.out.write(
             f"  {self._c('cyn', self.g_work)} {self._c('dim', prefix)}{self._c('bold', name)}  {self._c('dim', msg)}\n"
@@ -177,7 +185,9 @@ class Ui:
 
     def step_fail(self, name: str, msg: str) -> None:
         self.log("error", "step_fail", f"{name}: {msg}", {"step": name})
-        self.out.write(f"  {self._c('red', self.g_fail)} {self._c('bold', name)}  {self._c('red', msg)}\n")
+        self.out.write(
+            f"  {self._c('red', self.g_fail)} {self._c('bold', name)}  {self._c('red', msg)}\n"
+        )
 
     def bar(self, cur: int, tot: int, label: str = "") -> None:
         tot = tot or 1
@@ -209,7 +219,9 @@ class Ui:
         self.out.flush()
 
 
-def show_log(follow: bool = False, limit: int = 40, as_json: bool = False, path: bool = False) -> int:
+def show_log(
+    follow: bool = False, limit: int = 40, as_json: bool = False, path: bool = False
+) -> int:
     ui = Ui("log")
     log = ui.log_path()
     if path:
@@ -279,7 +291,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--path", action="store_true")
     args = parser.parse_args(argv)
     try:
-        return show_log(follow=args.follow, limit=args.n, as_json=args.json, path=args.path)
+        return show_log(
+            follow=args.follow, limit=args.n, as_json=args.json, path=args.path
+        )
     except KeyboardInterrupt:
         print()
         return 0
