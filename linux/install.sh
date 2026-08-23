@@ -61,20 +61,32 @@ fi
 
 ui_step "files" "binaries, defaults, UI"
 install -d -m 0755 "${PREFIX}/lib/facility-cache" "${PREFIX}/bin" "${PREFIX}/sbin"
-install -m 0644 "${HERE}/lib/common.sh" "${PREFIX}/lib/facility-cache/common.sh"
-install -m 0644 "${HERE}/lib/ui.sh" "${PREFIX}/lib/facility-cache/ui.sh"
-install -m 0644 "${HERE}/lib/facility_ui.py" "${PREFIX}/lib/facility-cache/facility_ui.py"
+# Stage every file under PREFIX first (same filesystem, so the final move is
+# a plain rename), then move it all into place in one quick pass. A failure
+# while staging (disk full, bad tarball, killed mid-copy) never touches the
+# live install; set -e + this trap unwinds to the old, fully-working files.
+STAGE="$(mktemp -d "${PREFIX}/.facility-cache-stage.XXXXXX")"
+trap 'rm -rf "$STAGE"' EXIT
+install -d -m 0755 "${STAGE}/lib" "${STAGE}/bin" "${STAGE}/sbin"
+install -m 0644 "${HERE}/lib/common.sh" "${STAGE}/lib/common.sh"
+install -m 0644 "${HERE}/lib/ui.sh" "${STAGE}/lib/ui.sh"
+install -m 0644 "${HERE}/lib/facility_ui.py" "${STAGE}/lib/facility_ui.py"
 if [[ -f "${ROOT}/defaults.env" ]]; then
-  install -m 0644 "${ROOT}/defaults.env" "${PREFIX}/lib/facility-cache/defaults"
+  install -m 0644 "${ROOT}/defaults.env" "${STAGE}/lib/defaults"
 fi
 if [[ -f "${ROOT}/VERSION" ]]; then
-  install -m 0644 "${ROOT}/VERSION" "${PREFIX}/lib/facility-cache/VERSION"
+  install -m 0644 "${ROOT}/VERSION" "${STAGE}/lib/VERSION"
 fi
-install -m 0755 "${HERE}/bin/facility-cache" "${PREFIX}/bin/facility-cache"
-install -m 0755 "${HERE}/bin/facility-cache-probe" "${PREFIX}/bin/facility-cache-probe"
-install -m 0755 "${HERE}/bin/facility-apt-proxy" "${PREFIX}/bin/facility-apt-proxy"
-install -m 0755 "${HERE}/sbin/facility-cache-apply" "${PREFIX}/sbin/facility-cache-apply"
-install -m 0755 "${HERE}/sbin/facility-cache-update" "${PREFIX}/sbin/facility-cache-update"
+install -m 0755 "${HERE}/bin/facility-cache" "${STAGE}/bin/facility-cache"
+install -m 0755 "${HERE}/bin/facility-cache-probe" "${STAGE}/bin/facility-cache-probe"
+install -m 0755 "${HERE}/bin/facility-apt-proxy" "${STAGE}/bin/facility-apt-proxy"
+install -m 0755 "${HERE}/sbin/facility-cache-apply" "${STAGE}/sbin/facility-cache-apply"
+install -m 0755 "${HERE}/sbin/facility-cache-update" "${STAGE}/sbin/facility-cache-update"
+for f in "${STAGE}"/lib/*; do mv -f "$f" "${PREFIX}/lib/facility-cache/$(basename "$f")"; done
+for f in "${STAGE}"/bin/*; do mv -f "$f" "${PREFIX}/bin/$(basename "$f")"; done
+for f in "${STAGE}"/sbin/*; do mv -f "$f" "${PREFIX}/sbin/$(basename "$f")"; done
+rm -rf "$STAGE"
+trap - EXIT
 ui_step_ok "v${VER} → ${PREFIX}"
 
 ui_step "apt" "proxy auto-detect"

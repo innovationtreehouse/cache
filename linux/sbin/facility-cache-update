@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import ssl
 import subprocess
 import sys
@@ -127,6 +128,31 @@ def asset_map(release: dict) -> dict[str, dict]:
 
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def verify_attestation(tar_path: Path, repo: str, token: str) -> bool:
+    """Best-effort GitHub Artifact Attestation check. Never raises.
+
+    Supply-chain nicety on top of the sha256 check above, not a replacement
+    for it: if `gh` is missing, unauthenticated, or the call fails for any
+    reason, the caller just logs a warning and keeps trusting sha256.
+    A hard-fail flag (refuse to install without a verified attestation) can
+    come later once attestations have been live for a while.
+    """
+    gh = shutil.which("gh")
+    if not gh:
+        return False
+    env = os.environ.copy()
+    if token:
+        env.setdefault("GH_TOKEN", token)
+    try:
+        subprocess.run(
+            [gh, "attestation", "verify", str(tar_path), "--repo", repo],
+            check=True, capture_output=True, text=True, timeout=30, env=env,
+        )
+        return True
+    except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def load_manifest(release: dict, cfg: dict[str, str]) -> dict:
@@ -291,6 +317,13 @@ def main() -> int:
             ui.finish(False, "refusing to install")
             return 1
         ui.step_ok("verify", digest[:12] + "…")
+
+        ui.step("attest", "build provenance")
+        if verify_attestation(tar_path, repo, cfg.get("GITHUB_TOKEN", "")):
+            ui.step_ok("attest", "verified")
+        else:
+            ui.warn("attestation unavailable — continuing on sha256 only")
+
         ui.step("install", f"v{remote}")
         install_tarball(tar_path)
         ui.step_ok("install", f"v{remote}")

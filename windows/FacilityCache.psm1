@@ -659,6 +659,30 @@ function Update-FacilityCacheClient {
         $got = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($got -ne $expect) { throw "sha256 mismatch: $got != $expect" }
         Write-FcStepOk ($got.Substring(0, 12) + '...')
+
+        # Best-effort supply-chain nicety on top of the sha256 check above,
+        # not a replacement for it: any failure to run/verify `gh` just logs
+        # a warning and falls back to trusting sha256, so a fleet without gh
+        # (or before attestations existed) never bricks. A hard-fail flag can
+        # come later.
+        Write-FcStep 'attest' 'build provenance'
+        $attested = $false
+        $ghCmd = Get-Command gh -ErrorAction SilentlyContinue
+        if ($ghCmd) {
+            try {
+                if ($cfg.GitHubToken) { $env:GH_TOKEN = $cfg.GitHubToken }
+                & $ghCmd.Path attestation verify $zip --repo $repo *> $null
+                $attested = ($LASTEXITCODE -eq 0)
+            } catch {
+                $attested = $false
+            }
+        }
+        if ($attested) {
+            Write-FcStepOk 'verified'
+        } else {
+            Write-FcWarn 'attestation unavailable — continuing on sha256 only'
+        }
+
         Write-FcStep 'install' "v$remote"
         Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
         $installer = Get-ChildItem -Path $tmp -Recurse -Filter 'Install-FacilityCache.ps1' | Select-Object -First 1

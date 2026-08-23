@@ -6,14 +6,34 @@ on:
       - "v*"
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
+  # Non-blocking: shellcheck/PSScriptAnalyzer catch real issues but a lint nit
+  # should never hold up a release. No `needs:` on the release job on purpose.
+  lint:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: ShellCheck (preinstalled on ubuntu-latest)
+        run: find linux -type f -name '*.sh' -print0 | xargs -0 shellcheck
+
+      - name: PSScriptAnalyzer (pwsh preinstalled on ubuntu-latest)
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+          Invoke-ScriptAnalyzer -Path windows -Recurse -EnableExit
+
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # Required by actions/attest-build-provenance to mint and record a
+      # Sigstore-backed attestation for the packed release artifacts.
+      id-token: write
+      attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Read VERSION
         id: ver
@@ -22,17 +42,34 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Tag must match VERSION
-        if: startsWith(github.ref, 'refs/tags/')
+      # Runs for both the tag push and workflow_dispatch: dispatch only
+      # publishes when it is run against a vX.Y.Z tag ref (pick that tag
+      # under "Use workflow from" when re-running), so a dispatch from a
+      # branch can never publish an unguarded release.
+      - name: Ref must be a version tag matching VERSION
         run: |
+          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
+            echo "This workflow only publishes from a vX.Y.Z tag ref (got $GITHUB_REF)." >&2
+            echo "For workflow_dispatch, pick the tag under 'Use workflow from'." >&2
+            exit 1
+          fi
           TAG="${GITHUB_REF_NAME#v}"
           if [ "$TAG" != "${{ steps.ver.outputs.version }}" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match VERSION ${{ steps.ver.outputs.version }}"
+            echo "Tag $GITHUB_REF_NAME does not match VERSION ${{ steps.ver.outputs.version }}" >&2
             exit 1
           fi
 
       - name: Pack assets
         run: python3 scripts/pack-release.py
+
+      # Free Artifact Attestations require this repo to stay public (or a
+      # GitHub Enterprise Cloud plan with the add-on) — see docs/SECURITY.md.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/facility-cache-client-linux.tar.gz
+            dist/facility-cache-client-windows.zip
 
       - name: Publish GitHub Release
         env:
