@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Shell files are matched by extension OR bash/sh shebang, same matcher as
+# release.yml's lint job. shfmt temporarily skips linux/install.sh and
+# linux/sbin/facility-cache-apply: both carry heavy in-flight PRs; drop the
+# excludes in a follow-up reformat once that stack lands.
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: shfmt (shell, 2-space indent)
+        run: |
+          curl -sSLo /usr/local/bin/shfmt \
+            https://github.com/mvdan/sh/releases/download/v3.10.0/shfmt_v3.10.0_linux_amd64
+          echo "1f57a384d59542f8fac5f503da1f3ea44242f46dff969569e80b524d64b71dbc  /usr/local/bin/shfmt" | sha256sum -c -
+          chmod +x /usr/local/bin/shfmt
+          files=$(git ls-files | while read -r f; do
+            case "$f" in
+              linux/install.sh|linux/sbin/facility-cache-apply) continue ;;
+              *.sh) echo "$f" ;;
+              *) head -1 "$f" 2>/dev/null | grep -qE '^#!.*/(bash|sh)( |$)' && echo "$f" || true ;;
+            esac
+          done)
+          # shfmt -d exits non-zero when any file needs reformatting
+          shfmt -i 2 -d $files
+      - name: ruff format (python)
+        run: |
+          pipx install ruff==0.12.4
+          ruff format --check .
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: shellcheck (runner-preinstalled)
+        run: |
+          shellcheck --version
+          files=$(git ls-files | while read -r f; do
+            case "$f" in
+              *.sh) echo "$f" ;;
+              *) head -1 "$f" 2>/dev/null | grep -qE '^#!.*/(bash|sh)( |$)' && echo "$f" || true ;;
+            esac
+          done)
+          shellcheck -x -S warning $files
+      - name: ruff check (python)
+        run: |
+          pipx install ruff==0.12.4
+          ruff check .
+      - name: PSScriptAnalyzer (powershell; gate on Error, print all)
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+          $findings = Get-ChildItem -Recurse -Path windows -Include *.ps1,*.psm1 |
+            ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName }
+          $findings | Format-Table -AutoSize | Out-String | Write-Host
+          if ($findings | Where-Object Severity -eq 'Error') { exit 1 }
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: python unit tests
+        run: python3 -m unittest discover -s tests -v
+      - name: shell self-check
+        run: bash tests/test_common.sh
