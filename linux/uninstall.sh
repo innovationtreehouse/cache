@@ -82,7 +82,8 @@ else
   # Prefer restoring the exact pre-install daemon.json from the backup merge_docker()
   # wrote in install.sh. Only fall back to stripping our known entries by value when
   # there's no backup (installs from before this fix, or nothing to restore).
-  docker_result="$(python3 - "$(docker_hub_mirror)" "$(docker_hub_insecure)" "$(docker_ghcr_insecure)" <<'PY'
+  docker_result="$(
+    python3 - "$(docker_hub_mirror)" "$(docker_hub_insecure)" "$(docker_ghcr_insecure)" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -124,12 +125,12 @@ else:
 PY
   )"
   case "$docker_result" in
-    restored)
-      ui_step_ok "daemon.json restored from pre-install backup"
-      ui_note "pre-restore daemon.json saved to /etc/docker/daemon.json.facility-cache.uninstalled"
-      ;;
-    stripped) ui_step_ok "facility mirrors stripped" ;;
-    *)        ui_step_ok "no daemon.json changes to undo" ;;
+  restored)
+    ui_step_ok "daemon.json restored from pre-install backup"
+    ui_note "pre-restore daemon.json saved to /etc/docker/daemon.json.facility-cache.uninstalled"
+    ;;
+  stripped) ui_step_ok "facility mirrors stripped" ;;
+  *) ui_step_ok "no daemon.json changes to undo" ;;
   esac
   if [[ "$docker_result" == restored || "$docker_result" == stripped ]]; then
     ui_note "dockerd must be restarted to pick this up"
