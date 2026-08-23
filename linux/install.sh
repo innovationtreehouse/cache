@@ -105,6 +105,16 @@ systemctl enable --now facility-cache-update.timer >/dev/null
 systemctl start facility-cache-apply.service >/dev/null 2>&1 || true
 ui_step_ok "$nm_msg · apply 5m · update daily"
 
+# common.sh was sourced at the top of this script, before the "files" step below
+# replaces /usr/local/lib/facility-cache/defaults — so on an upgrade, that source
+# picked up the PREVIOUS release's defaults.env, not the one in this tarball. Re-load
+# both layers, in the same order common.sh uses (package defaults, then local
+# overrides), so merge_docker sees this release's values.
+# shellcheck source=/dev/null
+[[ -r "$ROOT/defaults.env" ]] && source "$ROOT/defaults.env"
+# shellcheck source=/dev/null
+[[ -r "$CONFIG_FILE" ]] && source "$CONFIG_FILE"
+
 merge_docker() {
   # host/ports come from defaults.env + /etc/facility-cache/config (sourced above via
   # common.sh) so a CACHE_HOST override survives updates instead of always writing the
