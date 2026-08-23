@@ -6,6 +6,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 # shellcheck source=/dev/null
 source "$HERE/lib/ui.sh"
+# shellcheck source=/dev/null
+source "$HERE/lib/common.sh"
 
 if [[ "$(id -u)" -ne 0 ]]; then
   ui_init install
@@ -104,15 +106,24 @@ systemctl start facility-cache-apply.service >/dev/null 2>&1 || true
 ui_step_ok "$nm_msg · apply 5m · update daily"
 
 merge_docker() {
-  python3 - <<'PY'
+  # host/ports come from defaults.env + /etc/facility-cache/config (sourced above via
+  # common.sh) so a CACHE_HOST override survives updates instead of always writing the
+  # package default. docker_hub_insecure/docker_ghcr_insecure already format these as
+  # exact "host:port" strings — never a bare hostname or wildcard.
+  #
+  # insecure-registries persists here unconditionally, even off-site: dockerd only
+  # reads daemon.json at start (or on `docker restart docker`), so this can't be
+  # probe-gated on/off like pip/npm/uv without restarting the daemon every time the
+  # network changes. Accepted trade-off for the trusted-LAN model — see README.
+  python3 - "$(docker_hub_mirror)" "$(docker_hub_insecure)" "$(docker_ghcr_insecure)" <<'PY'
 import json
+import sys
 from pathlib import Path
 
+mirror, hub_insecure, ghcr_insecure = sys.argv[1:4]
 path = Path("/etc/docker/daemon.json")
 backup = Path("/etc/docker/daemon.json.facility-cache.bak")
-host = "cache.facility.innovationtreehouse.org"
-mirror = f"http://{host}:5000"
-insecure = [f"{host}:5000", f"{host}:5001"]
+insecure = [hub_insecure, ghcr_insecure]
 
 path.parent.mkdir(parents=True, exist_ok=True)
 if path.exists():
