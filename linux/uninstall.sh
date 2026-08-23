@@ -64,11 +64,20 @@ for f in /etc/pip.conf /etc/xdg/pip/pip.conf /etc/npmrc /etc/uv/uv.toml /etc/env
 done
 ui_step_ok "client files removed"
 
+STATUS=0
+
 ui_step "docker" "registry-mirrors"
 if [[ "$KEEP_DOCKER" -eq 1 ]]; then
   ui_step_skip "kept (--keep-docker)"
 elif ! command -v python3 >/dev/null 2>&1; then
   ui_step_skip "python3 not found"
+elif ! declare -F docker_hub_mirror >/dev/null 2>&1; then
+  # common.sh didn't load (see the sourcing block above) — docker_hub_mirror etc. are
+  # undefined, so calling them would silently pass empty strings to the python
+  # helper below, which would then match nothing and falsely report success.
+  # Refuse instead of guessing.
+  ui_step_fail "common.sh not loaded — refusing to touch /etc/docker/daemon.json"
+  STATUS=1
 else
   # Prefer restoring the exact pre-install daemon.json from the backup merge_docker()
   # wrote in install.sh. Only fall back to stripping our known entries by value when
@@ -81,9 +90,15 @@ from pathlib import Path
 mirror, hub_insecure, ghcr_insecure = sys.argv[1:4]
 path = Path("/etc/docker/daemon.json")
 backup = Path("/etc/docker/daemon.json.facility-cache.bak")
+snapshot = Path("/etc/docker/daemon.json.facility-cache.uninstalled")
 insecure = {hub_insecure, ghcr_insecure}
 
 if backup.exists():
+    # Whatever is live right now (our entries, plus any admin edits made since
+    # install) would otherwise be lost by jumping straight back to the day-one
+    # backup — save it first so nothing silently disappears.
+    if path.exists():
+        snapshot.write_text(path.read_text())
     path.write_text(backup.read_text())
     backup.unlink()
     print("restored")
@@ -109,7 +124,10 @@ else:
 PY
   )"
   case "$docker_result" in
-    restored) ui_step_ok "daemon.json restored from pre-install backup" ;;
+    restored)
+      ui_step_ok "daemon.json restored from pre-install backup"
+      ui_note "pre-restore daemon.json saved to /etc/docker/daemon.json.facility-cache.uninstalled"
+      ;;
     stripped) ui_step_ok "facility mirrors stripped" ;;
     *)        ui_step_ok "no daemon.json changes to undo" ;;
   esac
@@ -121,6 +139,11 @@ fi
 ui_step "keep" "local config"
 ui_step_ok "/etc/facility-cache/config left in place"
 
-ui_finish 0 "uninstalled"
+if [[ "$STATUS" -eq 0 ]]; then
+  ui_finish 0 "uninstalled"
+else
+  ui_finish 1 "uninstalled (docker config left untouched — see above)"
+fi
 ui_note "logs remain at $(ui_log_path 2>/dev/null || echo /var/log/facility-cache/)"
 printf '\n'
+exit "$STATUS"

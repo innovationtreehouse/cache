@@ -31,6 +31,10 @@ if (-not (Get-Command Write-FcStep -ErrorAction SilentlyContinue)) {
 }
 
 Write-FcStep 'tasks' 'scheduled tasks'
+# Stop a mid-flight run first — an Apply task still executing after Unregister
+# could rewrite env vars / pip.ini / npm's registry after the cleanup below runs.
+Stop-ScheduledTask -TaskName 'FacilityCache-Apply' -ErrorAction SilentlyContinue
+Stop-ScheduledTask -TaskName 'FacilityCache-Update' -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName 'FacilityCache-Apply' -Confirm:$false -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName 'FacilityCache-Update' -Confirm:$false -ErrorAction SilentlyContinue
 Write-FcStepOk 'Apply + Update unregistered'
@@ -55,8 +59,8 @@ foreach ($path in @(
 
 $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
 if ($npmCmd) {
-    # Same guard as Invoke-FacilityCacheApply's revert path: only clear the global
-    # registry if it's still pointed at ours, never someone else's configured value.
+    # Only clear the global npm registry if it's still pointed at ours — never
+    # blow away a registry someone else configured.
     $npmRegistry = $null
     if (Get-Command Get-FacilityCacheConfig -ErrorAction SilentlyContinue) {
         $fcCfg = Get-FacilityCacheConfig

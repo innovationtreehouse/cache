@@ -42,6 +42,8 @@ sudo facility-cache uninstall
 sudo facility-cache uninstall --keep-docker
 ```
 
+If install found a `daemon.json.facility-cache.bak`, uninstall restores it exactly — whatever was live in `daemon.json` right before that restore (our entries, plus any manual edits made since install) is saved first to `daemon.json.facility-cache.uninstalled`, so nothing is silently lost.
+
 Local overrides (kept across updates): `/etc/facility-cache/config`
 
 Private repo token (mode 600): `/etc/facility-cache/github-token`
