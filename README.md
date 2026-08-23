@@ -53,7 +53,7 @@ Client files, timers, and drop-ins are removed. `/etc/facility-cache/config` and
 
 Local overrides (kept across updates): `/etc/facility-cache/config`
 
-`/etc/facility-cache/github-token` (mode 600) is **only needed if this repo ever goes private again** — it isn't read for anything while the repo is public.
+`/etc/facility-cache/github-token` (mode 600) is **only needed if this repo ever goes private again** — but if the file exists, its contents are still sent as a bearer token on every GitHub API call. Delete it if it's stale or you don't need it; a bad token in there will break updates even on a public repo.
 
 A 5-minute timer re-applies LAN detection. A **daily** timer (with jitter) checks GitHub for a newer release, verifies `manifest.json` SHA-256, and re-runs `install.sh` without restarting Docker. See `docs/SECURITY.md` for the self-update integrity/authenticity model in full.
 
@@ -94,11 +94,11 @@ Uninstall:
 .\windows\Uninstall-FacilityCache.ps1
 ```
 
-Scheduled tasks, drop-ins, and the ProgramData client are removed; the event log is preserved.
+Scheduled tasks, drop-ins, and the ProgramData client are removed; the event log under `logs\` is preserved (uninstall hardening tracked in `fix/ship-uninstaller` — until that lands, uninstall deletes the whole `FacilityCache` folder, logs included).
 
 Local overrides: `C:\ProgramData\FacilityCache\config.json` (start from `{}`).
 Package defaults: `C:\ProgramData\FacilityCache\defaults.json` (replaced on each release).
-`C:\ProgramData\FacilityCache\github-token` is **only needed if this repo ever goes private again**.
+`C:\ProgramData\FacilityCache\github-token` is **only needed if this repo ever goes private again** — but if it exists, it's still sent as a bearer token on every call. Delete it if it's stale; a bad token breaks updates even on a public repo.
 
 Scheduled tasks: `FacilityCache-Apply` (LAN, every 5 minutes) and `FacilityCache-Update` (GitHub, daily + at boot).
 

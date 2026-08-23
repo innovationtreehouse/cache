@@ -44,6 +44,9 @@ it LAN-only today, and it's a DNS-based control, not a network ACL.
 
 ## Self-update authenticity
 
+(Attestation verification below lands in `fix/release-hardening`; until that
+branch merges, only the SHA-256 check exists.)
+
 The daily update timer always verifies the downloaded release tarball/zip
 against the SHA-256 in `manifest.json` before installing — that check is
 unconditional and always enforced.
