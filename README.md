@@ -94,7 +94,7 @@ Uninstall:
 .\windows\Uninstall-FacilityCache.ps1
 ```
 
-Scheduled tasks, drop-ins, and the ProgramData client are removed; the event log under `logs\` is preserved (uninstall hardening tracked in `fix/ship-uninstaller` — until that lands, uninstall deletes the whole `FacilityCache` folder, logs included).
+Scheduled tasks and drop-ins are removed; `config.json` and the event log under `logs\` are preserved (shipped alongside the uninstaller hardening in this release).
 
 Local overrides: `C:\ProgramData\FacilityCache\config.json` (start from `{}`).
 Package defaults: `C:\ProgramData\FacilityCache\defaults.json` (replaced on each release).
