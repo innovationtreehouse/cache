@@ -330,11 +330,12 @@ function Get-FacilityCacheStatus {
 
 function Set-MachineEnv {
     param([string]$Name, [string]$Value)
-    if ($null -eq $Value -or $Value -eq '') {
-        [Environment]::SetEnvironmentVariable($Name, $null, 'Machine')
-    } else {
-        [Environment]::SetEnvironmentVariable($Name, $Value, 'Machine')
-    }
+    $target = if ($null -eq $Value -or $Value -eq '') { $null } else { $Value }
+    $current = [Environment]::GetEnvironmentVariable($Name, 'Machine')
+    if ($current -eq $target) { return }
+    # SetEnvironmentVariable(..., 'Machine') broadcasts WM_SETTINGCHANGE to every top-level
+    # window; only call it when the value actually changes (this runs every 5 minutes).
+    [Environment]::SetEnvironmentVariable($Name, $target, 'Machine')
 }
 
 function Write-ManagedFile {
@@ -520,7 +521,12 @@ allow-insecure-host = ["$($cfg.CacheHost)"]
     } else {
         Set-MachineEnv -Name 'NPM_CONFIG_REGISTRY' -Value $null
         if ($npmCmd) {
-            & npm config delete registry --location=global 2>$null
+            # Only clear the global registry if it's still pointed at ours — never
+            # blow away a registry someone else configured.
+            $currentRegistry = (& npm config get registry --location=global 2>$null)
+            if ($currentRegistry -and $currentRegistry.Trim() -eq $npm) {
+                & npm config delete registry --location=global 2>$null
+            }
         }
     }
 }
