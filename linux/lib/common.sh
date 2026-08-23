@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared by facility-cache client scripts. Sourced, not executed.
 # Package defaults (updated on each GitHub Release) then local overrides.
 
@@ -14,10 +15,14 @@ AUTO_UPDATE="${AUTO_UPDATE:-1}"
 
 CONFIG_FILE="${FACILITY_CACHE_CONFIG:-/etc/facility-cache/config}"
 RUN_DIR="${FACILITY_CACHE_RUN_DIR:-/run/facility-cache}"
+# shellcheck disable=SC2034  # read by sourcing scripts
 ENV_FILE="${RUN_DIR}/env"
+# shellcheck disable=SC2034  # read by sourcing scripts
 STAMP_FILE="${RUN_DIR}/on"
 MANAGED_MARKER="facility-cache-managed"
+# shellcheck disable=SC2034  # read by sourcing scripts
 VERSION_FILE="/usr/local/lib/facility-cache/VERSION"
+# shellcheck disable=SC2034  # read by sourcing scripts
 STATE_FILE="/var/lib/facility-cache/state.json"
 
 PIP_INDEX_PATH="/root/pypi/+simple/"
@@ -26,8 +31,7 @@ _COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || _COMM
 for _defaults in \
   /usr/local/lib/facility-cache/defaults \
   "${_COMMON_DIR}/defaults" \
-  "${_COMMON_DIR}/../../defaults.env"
- do
+  "${_COMMON_DIR}/../../defaults.env"; do
   if [[ -n "$_defaults" && -r "$_defaults" ]]; then
     # shellcheck disable=SC1090
     source "$_defaults"

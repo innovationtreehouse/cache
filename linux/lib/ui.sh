@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Terminal UI + fetchable JSONL log. Sourced, not executed.
 # Visuals go to the TTY (or stderr). A JSON line is always appended to the log.
 
@@ -49,7 +50,7 @@ _ui_init_caps() {
     _ui_tty=1
   fi
   case "${LANG:-}${LC_ALL:-}${LC_CTYPE:-}" in
-    *UTF-8*|*utf8*|*UTF8*) _ui_unicode=1 ;;
+  *UTF-8* | *utf8* | *UTF8*) _ui_unicode=1 ;;
   esac
   if [[ "${FACILITY_CACHE_ASCII:-}" == 1 ]]; then
     _ui_unicode=0
@@ -57,7 +58,8 @@ _ui_init_caps() {
 }
 
 _c() { # $1=code  rest=text
-  local code="$1"; shift
+  local code="$1"
+  shift
   if [[ "$_ui_color" -eq 1 ]]; then
     printf '\033[%sm%s\033[0m' "$code" "$*"
   else
@@ -66,21 +68,21 @@ _c() { # $1=code  rest=text
 }
 
 _bold() { _c 1 "$*"; }
-_dim()  { _c 2 "$*"; }
-_red()  { _c 31 "$*"; }
-_grn()  { _c 32 "$*"; }
-_ylw()  { _c 33 "$*"; }
-_blu()  { _c 34 "$*"; }
-_mag()  { _c 35 "$*"; }
-_cyn()  { _c 36 "$*"; }
+_dim() { _c 2 "$*"; }
+_red() { _c 31 "$*"; }
+_grn() { _c 32 "$*"; }
+_ylw() { _c 33 "$*"; }
+_blu() { _c 34 "$*"; }
+_mag() { _c 35 "$*"; }
+_cyn() { _c 36 "$*"; }
 
-_g_ok()   { if [[ "$_ui_unicode" -eq 1 ]]; then printf '✓'; else printf 'OK'; fi; }
+_g_ok() { if [[ "$_ui_unicode" -eq 1 ]]; then printf '✓'; else printf 'OK'; fi; }
 _g_fail() { if [[ "$_ui_unicode" -eq 1 ]]; then printf '✗'; else printf 'X '; fi; }
 _g_work() { if [[ "$_ui_unicode" -eq 1 ]]; then printf '●'; else printf '*'; fi; }
-_g_off()  { if [[ "$_ui_unicode" -eq 1 ]]; then printf '○'; else printf 'o'; fi; }
+_g_off() { if [[ "$_ui_unicode" -eq 1 ]]; then printf '○'; else printf 'o'; fi; }
 _g_warn() { if [[ "$_ui_unicode" -eq 1 ]]; then printf '!'; else printf '!'; fi; }
 _g_info() { if [[ "$_ui_unicode" -eq 1 ]]; then printf 'i'; else printf 'i'; fi; }
-_g_arr()  { if [[ "$_ui_unicode" -eq 1 ]]; then printf '▸'; else printf '>'; fi; }
+_g_arr() { if [[ "$_ui_unicode" -eq 1 ]]; then printf '▸'; else printf '>'; fi; }
 
 _ui_cols() {
   local c
@@ -152,20 +154,32 @@ ui_kv() {
   local key="$1" val="$2" kind="${3:-}"
   local mark=""
   case "$kind" in
-    ok)   mark=" $(_grn "$(_g_ok)")" ;;
-    fail) mark=" $(_red "$(_g_fail)")" ;;
-    warn) mark=" $(_ylw "$(_g_warn)")" ;;
-    on)   mark=" $(_grn "$(_g_work)")" ;;
-    off)  mark=" $(_dim "$(_g_off)")" ;;
-    work) mark=" $(_cyn "$(_g_work)")" ;;
+  ok) mark=" $(_grn "$(_g_ok)")" ;;
+  fail) mark=" $(_red "$(_g_fail)")" ;;
+  warn) mark=" $(_ylw "$(_g_warn)")" ;;
+  on) mark=" $(_grn "$(_g_work)")" ;;
+  off) mark=" $(_dim "$(_g_off)")" ;;
+  work) mark=" $(_cyn "$(_g_work)")" ;;
   esac
   printf '  %s %-12s %s%s\n' "$(_dim "$(_g_arr)")" "$(_dim "$key")" "$val" "$mark"
 }
 
-ui_info() { printf '  %s %s\n' "$(_cyn "$(_g_info)")" "$*"; ui_log info info "$*"; }
-ui_ok()   { printf '  %s %s\n' "$(_grn "$(_g_ok)")"  "$*"; ui_log info ok "$*"; }
-ui_warn() { printf '  %s %s\n' "$(_ylw "$(_g_warn)")" "$*"; ui_log warn warn "$*"; }
-ui_fail() { printf '  %s %s\n' "$(_red "$(_g_fail)")" "$*"; ui_log error fail "$*"; }
+ui_info() {
+  printf '  %s %s\n' "$(_cyn "$(_g_info)")" "$*"
+  ui_log info info "$*"
+}
+ui_ok() {
+  printf '  %s %s\n' "$(_grn "$(_g_ok)")" "$*"
+  ui_log info ok "$*"
+}
+ui_warn() {
+  printf '  %s %s\n' "$(_ylw "$(_g_warn)")" "$*"
+  ui_log warn warn "$*"
+}
+ui_fail() {
+  printf '  %s %s\n' "$(_red "$(_g_fail)")" "$*"
+  ui_log error fail "$*"
+}
 ui_note() { printf '  %s %s\n' "$(_dim " ")" "$*"; }
 
 _ui_clear_line() {
