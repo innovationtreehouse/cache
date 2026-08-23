@@ -8,6 +8,8 @@ Installed clients **update themselves from GitHub Releases**. A new tag publishe
 
 Default repo: `innovationtreehouse/cache`.
 
+The cache host itself (`192.168.1.200`, apt-cacher-ng/devpi/verdaccio/Docker mirrors on ports 3141-5001) is an **external dependency**: this repo only configures clients to find it, it does not provision or run that box. See the org's infra repo for how the cache host is built and kept up.
+
 ## What gets applied
 
 | Client | On facility | Off-site |
@@ -17,9 +19,14 @@ Default repo: `innovationtreehouse/cache`.
 | npm | registry `…:4873` | default registry.npmjs.org |
 | Docker Hub | `registry-mirrors` (always listed) | engine falls back to docker.io |
 | GHCR | not rewritten | pull `ghcr.io/...` as usual |
-| Windows Update / Store / M365 / Defender | DHCP option **235** → MCC if you deploy it | option absent → Microsoft CDN |
+| Windows Update / Store | DHCP option **235** → MCC, if you deploy one | option absent → Microsoft CDN |
+| Microsoft 365 Apps / Defender updates | *partly* Delivery-Optimization-backed at best | expect some direct-to-Microsoft traffic regardless |
+
+> Delivery Optimization only honors the DHCP option 235 cache host on Windows Pro/Enterprise/Education. **Windows Home ignores that policy entirely** and always goes straight to Microsoft's CDN — there is no workaround for that edition here.
 
 ## Ubuntu — first install from a Release
+
+`innovationtreehouse/cache` is a public repo, so this is plain, unauthenticated `curl | sudo bash` — no token, no `gh auth login`:
 
 ```bash
 curl -fsSL https://github.com/innovationtreehouse/cache/releases/latest/download/install-linux.sh | sudo bash
@@ -42,11 +49,13 @@ sudo ./linux/uninstall.sh
 sudo ./linux/uninstall.sh --keep-docker
 ```
 
+Client files, timers, and drop-ins are removed. `/etc/facility-cache/config` and the event log under `/var/log/facility-cache/` are left in place.
+
 Local overrides (kept across updates): `/etc/facility-cache/config`
 
-Private repo token (mode 600): `/etc/facility-cache/github-token`
+`/etc/facility-cache/github-token` (mode 600) is **only needed if this repo ever goes private again** — it isn't read for anything while the repo is public.
 
-A 5-minute timer re-applies LAN detection. A **daily** timer (with jitter) checks GitHub for a newer release, verifies `manifest.json` SHA-256, and re-runs `install.sh` without restarting Docker.
+A 5-minute timer re-applies LAN detection. A **daily** timer (with jitter) checks GitHub for a newer release, verifies `manifest.json` SHA-256, and re-runs `install.sh` without restarting Docker. See `docs/SECURITY.md` for the self-update integrity/authenticity model in full.
 
 Commands draw a live terminal dashboard (steps, bars, on/off glyphs). The same events are appended as JSON lines you can fetch later:
 
@@ -62,7 +71,7 @@ facility-cache log --path           # where the file lives
 
 ## Windows — first install from a Release
 
-Elevated PowerShell:
+Elevated PowerShell. Same public-repo, no-auth model as Linux — no token needed:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
@@ -85,9 +94,11 @@ Uninstall:
 .\windows\Uninstall-FacilityCache.ps1
 ```
 
+Scheduled tasks, drop-ins, and the ProgramData client are removed; the event log is preserved.
+
 Local overrides: `C:\ProgramData\FacilityCache\config.json` (start from `{}`).
 Package defaults: `C:\ProgramData\FacilityCache\defaults.json` (replaced on each release).
-Private token: `C:\ProgramData\FacilityCache\github-token`
+`C:\ProgramData\FacilityCache\github-token` is **only needed if this repo ever goes private again**.
 
 Scheduled tasks: `FacilityCache-Apply` (LAN, every 5 minutes) and `FacilityCache-Update` (GitHub, daily + at boot).
 
@@ -138,3 +149,4 @@ Pack locally without tagging: `python3 scripts/pack-release.py`
 - Auto-update does **not** restart Docker; restart it yourself if `daemon.json` changed.
 - Disable auto-update: `AUTO_UPDATE=0` in `/etc/facility-cache/config`, or `"AutoUpdate": false` in the Windows `config.json`.
 - Existing `/etc/pip.conf` or `/etc/npmrc` without a `facility-cache-managed` marker is left alone.
+- Trust model, integrity checks, and release-publishing controls: see [`docs/SECURITY.md`](docs/SECURITY.md).
