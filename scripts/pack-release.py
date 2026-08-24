@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build GitHub Release assets in ./dist."""
+
 from __future__ import annotations
 
 import hashlib
@@ -92,7 +93,9 @@ def main() -> None:
     ]
     sums.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    (DIST / "install-linux.sh").write_bytes((ROOT / "linux" / "bootstrap.sh").read_bytes())
+    (DIST / "install-linux.sh").write_bytes(
+        (ROOT / "linux" / "bootstrap.sh").read_bytes()
+    )
     (DIST / "install-windows.ps1").write_bytes(
         (ROOT / "windows" / "Install-FromGitHub.ps1").read_bytes()
     )
