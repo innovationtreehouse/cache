@@ -40,6 +40,23 @@ check docker_hub_mirror "http://cache.test.example:4444" "$(docker_hub_mirror)"
 check docker_hub_insecure "cache.test.example:4444" "$(docker_hub_insecure)"
 check docker_ghcr_insecure "cache.test.example:5555" "$(docker_ghcr_insecure)"
 
+# apt_proxy_should_direct: rewritten HTTPS backends already target the cache
+apt_proxy_should_direct "http://cache.test.example:1111/https://cli.github.com/packages" && r=0 || r=1
+check proxy-direct-cache-host 0 "$r"
+apt_proxy_should_direct "http://10.9.9.9:1111/ubuntu" && r=0 || r=1
+check proxy-direct-expected-ip 0 "$r"
+apt_proxy_should_direct "http://archive.ubuntu.com/ubuntu" && r=0 || r=1
+check proxy-proxy-ubuntu 1 "$r"
+apt_proxy_should_direct "https://cli.github.com/packages" && r=0 || r=1
+check proxy-proxy-cli-https 1 "$r"
+
+# shellcheck disable=SC1091
+source "$ROOT/linux/lib/ensure_gh.sh"
+on_facility() { return 1; }
+check gh-url-offsite "https://cli.github.com/packages" "$(github_cli_packages_url)"
+on_facility() { return 0; }
+check gh-url-onsite "http://cache.test.example:1111/https://cli.github.com/packages" "$(github_cli_packages_url)"
+
 # file_is_managed: marker present / absent / missing file
 printf '# %s\nkey=1\n' "$MANAGED_MARKER" >"$TMP/managed"
 printf 'key=1\n' >"$TMP/unmanaged"

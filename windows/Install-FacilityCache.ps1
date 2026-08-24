@@ -20,7 +20,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $here
 $dest = Join-Path $env:ProgramData 'FacilityCache'
 Import-Module (Join-Path $here 'FacilityCache.psm1') -Force
-$script:FcStepN = 6
+$script:FcStepN = 7
 $verFile = Join-Path $root 'VERSION'
 $ver = 'unknown'
 if (Test-Path $verFile) { $ver = (Get-Content $verFile -Raw).Trim() }
@@ -54,6 +54,13 @@ if (-not (Test-Path $cfgPath)) {
 }
 Write-FcStepOk "v$ver -> $dest"
 Import-Module (Join-Path $dest 'FacilityCache.psm1') -Force
+
+Write-FcStep 'gh' 'GitHub CLI'
+if (Sync-FacilityCacheGitHubCli) {
+    Write-FcStepOk 'gh'
+} else {
+    Write-FcWarn 'gh install skipped — attestations may be unavailable'
+}
 
 Write-FcStep 'delivery-opt' 'DHCP option 235'
 Set-DeliveryOptimizationDhcpDiscovery

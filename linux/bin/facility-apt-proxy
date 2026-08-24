@@ -18,9 +18,15 @@ else
   exit 0
 fi
 
+# Requests already aimed at the cache (rewritten HTTPS backends look like
+# http://CACHE_HOST:APT_PORT/https://…) must not go through the proxy again.
 if on_facility "$APT_PORT"; then
-  apt_proxy_url
-  echo
+  if apt_proxy_should_direct "${1:-}"; then
+    echo DIRECT
+  else
+    apt_proxy_url
+    echo
+  fi
 else
   echo DIRECT
 fi

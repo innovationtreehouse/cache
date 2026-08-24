@@ -57,6 +57,18 @@ try {
     if ($got -ne $expect) { throw "sha256 mismatch: $got != $expect" }
     Write-Host "  +  verified  v$($manifest.version)" -ForegroundColor Green
 
+    Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
+    $mod = Get-ChildItem -Path $tmp -Recurse -Filter 'FacilityCache.psm1' | Select-Object -First 1
+    if ($mod) {
+        Import-Module $mod.FullName -Force
+        Write-Boot 'gh  GitHub CLI'
+        if (Sync-FacilityCacheGitHubCli) {
+            Write-Host '  +  gh' -ForegroundColor Green
+        } else {
+            Write-Host '  !  gh install skipped — continuing on sha256 only' -ForegroundColor Yellow
+        }
+    }
+
     $ghCmd = Get-Command gh -ErrorAction SilentlyContinue
     if ($ghCmd) {
         $attested = $false
@@ -84,7 +96,6 @@ try {
         }
     }
 
-    Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
     $installer = Get-ChildItem -Path $tmp -Recurse -Filter 'Install-FacilityCache.ps1' | Select-Object -First 1
     if (-not $installer) { throw 'zip missing windows/Install-FacilityCache.ps1' }
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer.FullName

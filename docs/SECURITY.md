@@ -94,31 +94,39 @@ private, re-check this before assuming attestation verification still works.
 
 ## GitHub CLI on client machines
 
-Attestation verification is a no-op unless `gh` is on PATH. Install it on
-every Ubuntu and Windows machine that runs this client so first install and
-the daily updater actually check provenance. SHA-256 still runs either way;
-without `gh` that is the only check.
+Bootstrap, `install.sh`, and the daily updater **install `gh` if it is
+missing** and **upgrade it** when a newer version is in GitHub's apt repo
+(Ubuntu) or winget / GitHub Releases (Windows). Attestation stays
+warn-only if that install fails, so a machine without `gh` is weaker, not
+bricked.
 
-This is a fleet requirement, not a code hard-fail: the client still
-installs if `gh` is missing, so a machine without it is silently weaker,
-not bricked.
+Ubuntu uses GitHub's apt repository (GPG keyring under
+`/etc/apt/keyrings/facility-cache-githubcli.gpg`), not Ubuntu universe
+(too old for `--signer-workflow`) and not `curl | bash`. On the facility
+LAN the source line is rewritten through apt-cacher-ng:
 
-Install `gh` from a GPG-signed channel:
+```
+http://cache.facility.innovationtreehouse.org:3142/https://cli.github.com/packages
+```
 
-- **Ubuntu** — GitHub's apt repository (see
-  [cli/cli install_linux.md](https://github.com/cli/cli/blob/trunk/docs/install_linux.md)),
-  then `sudo apt install gh`. Do not `curl | bash` GitHub's installer
-  script. Do not fetch `gh` through the facility pip or Docker caches.
-  Ubuntu universe's `gh` is often too old for `--signer-workflow` and
-  `--deny-self-hosted-runners`.
-- **Windows** — `winget install GitHub.cli`
+`facility-apt-proxy` returns `DIRECT` for URLs already aimed at the cache
+host so that rewrite is not double-proxied. Off-site the source is
+`https://cli.github.com/packages`. Apply (every 5 minutes) only rewrites
+the URL; install/update/bootstrap run `apt-get install gh`.
+
+Windows: `winget install`/`upgrade GitHub.cli`, falling back to the
+`windows_amd64.msi` from `cli/cli` releases. There is no apt-cacher-ng
+equivalent for that path.
+
+Uninstall removes the apt source and keyring this client wrote; it does
+not remove `gh` itself.
 
 No `gh auth login` is required for this public repo.
 
-Recommended first install verifies `install-linux.sh` /
-`install-windows.ps1` **before** executing them. `curl | sudo bash` cannot
-do that — it runs the bootstrap script, which then verifies the archive
-only if `gh` is already present. See `README.md`.
+Recommended first install still verifies `install-linux.sh` /
+`install-windows.ps1` **before** executing them — that needs a `gh`
+already on PATH. `curl | sudo bash` cannot do that; it installs `gh`
+from the tarball, then attests the archive. See `README.md`.
 
 ## Release-publishing controls
 

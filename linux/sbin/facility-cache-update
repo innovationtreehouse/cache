@@ -184,6 +184,54 @@ def load_manifest(release: dict, cfg: dict[str, str]) -> dict:
     return json.loads(raw.decode("utf-8"))
 
 
+def ensure_github_cli(tar_path: Path | None, ui: Ui) -> None:
+    """Install/upgrade gh. Best-effort, never raises.
+
+    When tar_path is set (a newly downloaded release), run that tarball's
+    helper so a first upgrade onto this feature still works. Otherwise use
+    the installed /usr/local/sbin/facility-cache-ensure-gh.
+    """
+    ui.step("gh", "GitHub CLI")
+    script = None
+    tmp: tempfile.TemporaryDirectory[str] | None = None
+    try:
+        if tar_path is not None and tar_path.is_file():
+            tmp = tempfile.TemporaryDirectory(prefix="facility-cache-gh-")
+            with tarfile.open(tar_path, "r:gz") as tar:
+                try:
+                    tar.extractall(tmp.name, filter="data")
+                except TypeError:
+                    tar.extractall(tmp.name)
+            for root, _dirs, files in os.walk(tmp.name):
+                if "facility-cache-ensure-gh" in files:
+                    script = Path(root) / "facility-cache-ensure-gh"
+                    break
+        if script is None:
+            installed = Path("/usr/local/sbin/facility-cache-ensure-gh")
+            if installed.is_file():
+                script = installed
+        if script is None:
+            ui.warn("gh helper missing — continuing")
+            return
+        proc = subprocess.run(
+            ["bash", str(script)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        if proc.returncode == 0 and shutil.which("gh"):
+            ver = (proc.stdout or "").strip().splitlines()
+            ui.step_ok("gh", ver[0] if ver else "installed")
+        else:
+            ui.warn("gh install skipped — attestations may be unavailable")
+    except (OSError, tarfile.TarError, subprocess.TimeoutExpired):
+        ui.warn("gh install skipped — attestations may be unavailable")
+    finally:
+        if tmp is not None:
+            tmp.cleanup()
+
+
 def install_tarball(tar_path: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="facility-cache-") as tmp:
         with tarfile.open(tar_path, "r:gz") as tar:
@@ -214,7 +262,7 @@ def main() -> int:
     args = parser.parse_args()
 
     ui = Ui("update")
-    ui.n = 5
+    ui.n = 6
     local = installed_version()
     ui.banner("facility-cache-client", f"update  v{local}")
 
@@ -300,6 +348,7 @@ def main() -> int:
             }
         )
         ui.ok("already up to date")
+        ensure_github_cli(None, ui)
         ui.finish(True, f"v{local}")
         return 0
 
@@ -350,6 +399,8 @@ def main() -> int:
             ui.finish(False, "refusing to install")
             return 1
         ui.step_ok("verify", digest[:12] + "…")
+
+        ensure_github_cli(tar_path, ui)
 
         ui.step("attest", "build provenance")
         if verify_attestation(tar_path, repo, cfg.get("GITHUB_TOKEN", "")):

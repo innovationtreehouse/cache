@@ -553,6 +553,59 @@ function Test-FacilityCacheVersionNewer {
     return ($a.Patch -gt $b.Patch)
 }
 
+function Update-GitHubCliPath {
+    $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $user = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if (-not $machine) { $machine = '' }
+    if (-not $user) { $user = '' }
+    $env:Path = "$machine;$user;$env:Path"
+    $pf = Join-Path $env:ProgramFiles 'GitHub CLI'
+    $exe = Join-Path $pf 'gh.exe'
+    if (Test-Path -LiteralPath $exe) {
+        $env:Path = "$pf;$env:Path"
+    }
+}
+
+function Sync-FacilityCacheGitHubCli {
+    # Install gh if missing; winget-upgrade (or GitHub Releases MSI) if present.
+    # Returns $true when gh is on PATH afterwards. Never throws.
+    Update-GitHubCliPath
+    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    $gh = Get-Command gh -ErrorAction SilentlyContinue
+    if ($winget) {
+        $wgArgs = @('--accept-package-agreements', '--accept-source-agreements')
+        try {
+            if ($gh) {
+                & $winget.Path upgrade --id GitHub.cli @wgArgs 2>$null | Out-Null
+            } else {
+                & $winget.Path install --id GitHub.cli -e --source winget @wgArgs 2>$null | Out-Null
+            }
+        } catch { }
+        Update-GitHubCliPath
+        if (Get-Command gh -ErrorAction SilentlyContinue) { return $true }
+    }
+    try {
+        $headers = @{
+            'User-Agent' = 'facility-cache-client'
+            Accept       = 'application/vnd.github+json'
+        }
+        $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/cli/cli/releases/latest' -Headers $headers
+        $asset = $release.assets | Where-Object { $_.name -like '*windows_amd64.msi' } | Select-Object -First 1
+        if (-not $asset) { return [bool](Get-Command gh -ErrorAction SilentlyContinue) }
+        $msi = Join-Path $env:TEMP 'facility-cache-gh.msi'
+        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $msi -UseBasicParsing
+        $p = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', $msi, '/qn', '/norestart') -Wait -PassThru
+        Remove-Item -LiteralPath $msi -Force -ErrorAction SilentlyContinue
+        Update-GitHubCliPath
+        if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
+            return [bool](Get-Command gh -ErrorAction SilentlyContinue)
+        }
+    } catch {
+        return [bool](Get-Command gh -ErrorAction SilentlyContinue)
+    }
+    return [bool](Get-Command gh -ErrorAction SilentlyContinue)
+}
+
 function Write-FacilityCacheState {
     param($Data)
     $dir = Get-FacilityCacheInstallDir
@@ -645,6 +698,12 @@ function Update-FacilityCacheClient {
             last_result       = 'up-to-date'
         }
         Write-FcOk 'already up to date'
+        Write-FcStep 'gh' 'GitHub CLI'
+        if (Sync-FacilityCacheGitHubCli) {
+            Write-FcStepOk 'gh'
+        } else {
+            Write-FcWarn 'gh install skipped — attestations may be unavailable'
+        }
         Write-FcFinish -Ok $true -Message "v$local"
         return
     }
@@ -665,6 +724,13 @@ function Update-FacilityCacheClient {
         $got = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($got -ne $expect) { throw "sha256 mismatch: $got != $expect" }
         Write-FcStepOk ($got.Substring(0, 12) + '...')
+
+        Write-FcStep 'gh' 'GitHub CLI'
+        if (Sync-FacilityCacheGitHubCli) {
+            Write-FcStepOk 'gh'
+        } else {
+            Write-FcWarn 'gh install skipped — attestations may be unavailable'
+        }
 
         # Best-effort supply-chain nicety on top of the sha256 check above,
         # not a replacement for it: any failure to run/verify `gh` just logs
@@ -738,6 +804,7 @@ Export-ModuleMember -Function @(
     'Remove-DeliveryOptimizationDhcpDiscovery',
     'Invoke-FacilityCacheApply',
     'Update-FacilityCacheClient',
+    'Sync-FacilityCacheGitHubCli',
     'Write-FcHeader', 'Write-FcKv', 'Write-FcOk', 'Write-FcFail', 'Write-FcWarn',
     'Write-FcNote', 'Write-FcStep', 'Write-FcStepOk', 'Write-FcBar', 'Write-FcFinish'
 )

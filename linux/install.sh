@@ -52,7 +52,7 @@ done
 
 VER="unknown"
 [[ -f "$ROOT/VERSION" ]] && VER="$(tr -d ' v\n' <"$ROOT/VERSION")"
-ui_init install 7
+ui_init install 8
 if [[ "$FROM_UPDATE" -eq 0 ]]; then
   ui_banner "facility-cache-client" "install  v${VER}"
 fi
@@ -87,6 +87,7 @@ install -d -m 0755 "${STAGE}/lib" "${STAGE}/bin" "${STAGE}/sbin"
 install -m 0644 "${HERE}/lib/common.sh" "${STAGE}/lib/common.sh"
 install -m 0644 "${HERE}/lib/ui.sh" "${STAGE}/lib/ui.sh"
 install -m 0644 "${HERE}/lib/facility_ui.py" "${STAGE}/lib/facility_ui.py"
+install -m 0644 "${HERE}/lib/ensure_gh.sh" "${STAGE}/lib/ensure_gh.sh"
 if [[ -f "${ROOT}/defaults.env" ]]; then
   install -m 0644 "${ROOT}/defaults.env" "${STAGE}/lib/defaults"
 fi
@@ -98,6 +99,7 @@ install -m 0755 "${HERE}/bin/facility-cache-probe" "${STAGE}/bin/facility-cache-
 install -m 0755 "${HERE}/bin/facility-apt-proxy" "${STAGE}/bin/facility-apt-proxy"
 install -m 0755 "${HERE}/sbin/facility-cache-apply" "${STAGE}/sbin/facility-cache-apply"
 install -m 0755 "${HERE}/sbin/facility-cache-update" "${STAGE}/sbin/facility-cache-update"
+install -m 0755 "${HERE}/sbin/facility-cache-ensure-gh" "${STAGE}/sbin/facility-cache-ensure-gh"
 install -m 0755 "${HERE}/uninstall.sh" "${STAGE}/sbin/facility-cache-uninstall"
 for f in "${STAGE}"/lib/*; do mv -f "$f" "${PREFIX}/lib/facility-cache/$(basename "$f")"; done
 for f in "${STAGE}"/bin/*; do mv -f "$f" "${PREFIX}/bin/$(basename "$f")"; done
@@ -112,6 +114,17 @@ install -m 0644 "${HERE}/apt/00facility-cache" /etc/apt/apt.conf.d/00facility-ca
 install -d -m 0755 /etc/profile.d
 install -m 0644 "${HERE}/profile.d/facility-cache.sh" /etc/profile.d/facility-cache.sh
 ui_step_ok "DIRECT off-site, cache on-site"
+
+ui_step "gh" "GitHub CLI"
+# shellcheck source=/dev/null
+if [[ -r "${HERE}/lib/ensure_gh.sh" ]]; then
+  source "${HERE}/lib/ensure_gh.sh"
+fi
+if declare -F github_cli_ensure >/dev/null 2>&1 && github_cli_ensure; then
+  ui_step_ok "$(gh --version 2>/dev/null | head -n1 | tr -d '\r' || echo gh)"
+else
+  ui_step_skip "not installed — attestations stay warn-only"
+fi
 
 ui_step "hooks" "NetworkManager + systemd"
 if [[ -d /etc/NetworkManager/dispatcher.d ]]; then

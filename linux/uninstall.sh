@@ -45,6 +45,9 @@ ui_step_ok "timers and units removed"
 
 ui_step "files" "binaries and drop-ins"
 rm -f /etc/apt/apt.conf.d/00facility-cache
+rm -f /etc/apt/sources.list.d/facility-cache-github-cli.list
+rm -f /etc/apt/keyrings/facility-cache-githubcli.gpg
+rm -f /usr/local/sbin/facility-cache-ensure-gh
 rm -f /etc/profile.d/facility-cache.sh
 rm -f /etc/NetworkManager/dispatcher.d/99-facility-cache
 rm -f /usr/local/bin/facility-cache
