@@ -6,6 +6,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 # shellcheck source=/dev/null
 source "$HERE/lib/ui.sh"
+# shellcheck source=/dev/null
+source "$HERE/lib/common.sh"
 
 if [[ "$(id -u)" -ne 0 ]]; then
   ui_init install
@@ -74,21 +76,34 @@ fi
 
 ui_step "files" "binaries, defaults, UI"
 install -d -m 0755 "${PREFIX}/lib/facility-cache" "${PREFIX}/bin" "${PREFIX}/sbin"
-install -m 0644 "${HERE}/lib/common.sh" "${PREFIX}/lib/facility-cache/common.sh"
-install -m 0644 "${HERE}/lib/ui.sh" "${PREFIX}/lib/facility-cache/ui.sh"
-install -m 0644 "${HERE}/lib/facility_ui.py" "${PREFIX}/lib/facility-cache/facility_ui.py"
+# Stage every file under PREFIX first (same filesystem, so the final move is
+# a plain rename), then move it all into place in one quick pass. A failure
+# while staging (disk full, bad tarball, killed mid-copy) never touches the
+# live install; set -e + this trap unwinds to the old, fully-working files.
+rm -rf "${PREFIX}"/.facility-cache-stage.* 2>/dev/null || true
+STAGE="$(mktemp -d "${PREFIX}/.facility-cache-stage.XXXXXX")"
+trap 'rm -rf "$STAGE"' EXIT
+install -d -m 0755 "${STAGE}/lib" "${STAGE}/bin" "${STAGE}/sbin"
+install -m 0644 "${HERE}/lib/common.sh" "${STAGE}/lib/common.sh"
+install -m 0644 "${HERE}/lib/ui.sh" "${STAGE}/lib/ui.sh"
+install -m 0644 "${HERE}/lib/facility_ui.py" "${STAGE}/lib/facility_ui.py"
 if [[ -f "${ROOT}/defaults.env" ]]; then
-  install -m 0644 "${ROOT}/defaults.env" "${PREFIX}/lib/facility-cache/defaults"
+  install -m 0644 "${ROOT}/defaults.env" "${STAGE}/lib/defaults"
 fi
 if [[ -f "${ROOT}/VERSION" ]]; then
-  install -m 0644 "${ROOT}/VERSION" "${PREFIX}/lib/facility-cache/VERSION"
+  install -m 0644 "${ROOT}/VERSION" "${STAGE}/lib/VERSION"
 fi
-install -m 0755 "${HERE}/bin/facility-cache" "${PREFIX}/bin/facility-cache"
-install -m 0755 "${HERE}/bin/facility-cache-probe" "${PREFIX}/bin/facility-cache-probe"
-install -m 0755 "${HERE}/bin/facility-apt-proxy" "${PREFIX}/bin/facility-apt-proxy"
-install -m 0755 "${HERE}/sbin/facility-cache-apply" "${PREFIX}/sbin/facility-cache-apply"
-install -m 0755 "${HERE}/sbin/facility-cache-update" "${PREFIX}/sbin/facility-cache-update"
-install -m 0755 "${HERE}/uninstall.sh" "${PREFIX}/sbin/facility-cache-uninstall"
+install -m 0755 "${HERE}/bin/facility-cache" "${STAGE}/bin/facility-cache"
+install -m 0755 "${HERE}/bin/facility-cache-probe" "${STAGE}/bin/facility-cache-probe"
+install -m 0755 "${HERE}/bin/facility-apt-proxy" "${STAGE}/bin/facility-apt-proxy"
+install -m 0755 "${HERE}/sbin/facility-cache-apply" "${STAGE}/sbin/facility-cache-apply"
+install -m 0755 "${HERE}/sbin/facility-cache-update" "${STAGE}/sbin/facility-cache-update"
+install -m 0755 "${HERE}/uninstall.sh" "${STAGE}/sbin/facility-cache-uninstall"
+for f in "${STAGE}"/lib/*; do mv -f "$f" "${PREFIX}/lib/facility-cache/$(basename "$f")"; done
+for f in "${STAGE}"/bin/*; do mv -f "$f" "${PREFIX}/bin/$(basename "$f")"; done
+for f in "${STAGE}"/sbin/*; do mv -f "$f" "${PREFIX}/sbin/$(basename "$f")"; done
+rm -rf "$STAGE"
+trap - EXIT
 ui_step_ok "v${VER} → ${PREFIX}"
 
 ui_step "apt" "proxy auto-detect"
@@ -117,16 +132,35 @@ systemctl enable --now facility-cache-update.timer >/dev/null
 systemctl start facility-cache-apply.service >/dev/null 2>&1 || true
 ui_step_ok "$nm_msg · apply 5m · update daily"
 
+# common.sh was sourced at the top of this script, before the "files" step below
+# replaces /usr/local/lib/facility-cache/defaults — so on an upgrade, that source
+# picked up the PREVIOUS release's defaults.env, not the one in this tarball. Re-load
+# both layers, in the same order common.sh uses (package defaults, then local
+# overrides), so merge_docker sees this release's values.
+# shellcheck source=/dev/null
+[[ -r "$ROOT/defaults.env" ]] && source "$ROOT/defaults.env"
+# shellcheck source=/dev/null
+[[ -r "$CONFIG_FILE" ]] && source "$CONFIG_FILE"
+
 merge_docker() {
-  python3 - <<'PY'
+  # host/ports come from defaults.env + /etc/facility-cache/config (sourced above via
+  # common.sh) so a CACHE_HOST override survives updates instead of always writing the
+  # package default. docker_hub_insecure/docker_ghcr_insecure already format these as
+  # exact "host:port" strings — never a bare hostname or wildcard.
+  #
+  # insecure-registries persists here unconditionally, even off-site: dockerd only
+  # reads daemon.json at start (or on `docker restart docker`), so this can't be
+  # probe-gated on/off like pip/npm/uv without restarting the daemon every time the
+  # network changes. Accepted trade-off for the trusted-LAN model — see README.
+  python3 - "$(docker_hub_mirror)" "$(docker_hub_insecure)" "$(docker_ghcr_insecure)" <<'PY'
 import json
+import sys
 from pathlib import Path
 
+mirror, hub_insecure, ghcr_insecure = sys.argv[1:4]
 path = Path("/etc/docker/daemon.json")
 backup = Path("/etc/docker/daemon.json.facility-cache.bak")
-host = "cache.facility.innovationtreehouse.org"
-mirror = f"http://{host}:5000"
-insecure = [f"{host}:5000", f"{host}:5001"]
+insecure = [hub_insecure, ghcr_insecure]
 
 path.parent.mkdir(parents=True, exist_ok=True)
 if path.exists():
