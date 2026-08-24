@@ -665,6 +665,43 @@ function Update-FacilityCacheClient {
         $got = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($got -ne $expect) { throw "sha256 mismatch: $got != $expect" }
         Write-FcStepOk ($got.Substring(0, 12) + '...')
+
+        # Best-effort supply-chain nicety on top of the sha256 check above,
+        # not a replacement for it: any failure to run/verify `gh` just logs
+        # a warning and falls back to trusting sha256, so a fleet without gh
+        # (or before attestations existed) never bricks. A hard-fail flag can
+        # come later.
+        Write-FcStep 'attest' 'build provenance'
+        $attested = $false
+        $ghCmd = Get-Command gh -ErrorAction SilentlyContinue
+        if ($ghCmd) {
+            try {
+                # Process.Start + WaitForExit(timeout), not `&`, so a wedged gh
+                # can't hang this scheduled task forever, and GH_TOKEN is set
+                # only for this child process rather than the whole session.
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = $ghCmd.Path
+                $psi.Arguments = "attestation verify `"$zip`" --repo $repo"
+                $psi.UseShellExecute = $false
+                $psi.RedirectStandardOutput = $true
+                $psi.RedirectStandardError = $true
+                if ($cfg.GitHubToken) { $psi.EnvironmentVariables['GH_TOKEN'] = $cfg.GitHubToken }
+                $proc = [System.Diagnostics.Process]::Start($psi)
+                if ($proc.WaitForExit(30000)) {
+                    $attested = ($proc.ExitCode -eq 0)
+                } else {
+                    $proc.Kill()
+                }
+            } catch {
+                $attested = $false
+            }
+        }
+        if ($attested) {
+            Write-FcStepOk 'verified'
+        } else {
+            Write-FcWarn 'attestation unavailable — continuing on sha256 only'
+        }
+
         Write-FcStep 'install' "v$remote"
         Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
         $installer = Get-ChildItem -Path $tmp -Recurse -Filter 'Install-FacilityCache.ps1' | Select-Object -First 1
