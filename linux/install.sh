@@ -98,6 +98,7 @@ install -m 0755 "${HERE}/bin/facility-cache-probe" "${STAGE}/bin/facility-cache-
 install -m 0755 "${HERE}/bin/facility-apt-proxy" "${STAGE}/bin/facility-apt-proxy"
 install -m 0755 "${HERE}/sbin/facility-cache-apply" "${STAGE}/sbin/facility-cache-apply"
 install -m 0755 "${HERE}/sbin/facility-cache-update" "${STAGE}/sbin/facility-cache-update"
+install -m 0755 "${HERE}/uninstall.sh" "${STAGE}/sbin/facility-cache-uninstall"
 for f in "${STAGE}"/lib/*; do mv -f "$f" "${PREFIX}/lib/facility-cache/$(basename "$f")"; done
 for f in "${STAGE}"/bin/*; do mv -f "$f" "${PREFIX}/bin/$(basename "$f")"; done
 for f in "${STAGE}"/sbin/*; do mv -f "$f" "${PREFIX}/sbin/$(basename "$f")"; done

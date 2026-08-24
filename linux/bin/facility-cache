@@ -13,14 +13,15 @@ fi
 usage() {
   cat <<EOF
 
-  facility-cache  status|apply|probe|update|log|version
+  facility-cache  status|apply|probe|update|uninstall|log|version
 
-  status   LAN dashboard (services, drop-ins, updates)
-  apply    refresh pip/npm/uv for this network
-  probe    check DNS + an optional --port
-  update   install a newer GitHub Release
-  log      fetchable event log  [-n N] [-f] [--json] [--path]
-  version  installed package version
+  status     LAN dashboard (services, drop-ins, updates)
+  apply      refresh pip/npm/uv for this network
+  probe      check DNS + an optional --port
+  update     install a newer GitHub Release
+  uninstall  remove the client  [--keep-docker]
+  log        fetchable event log  [-n N] [-f] [--json] [--path]
+  version    installed package version
 
 EOF
 }
@@ -29,9 +30,11 @@ _here="$(cd "$(dirname "$0")" && pwd)"
 APPLY="/usr/local/sbin/facility-cache-apply"
 PROBE="/usr/local/bin/facility-cache-probe"
 UPDATE="/usr/local/sbin/facility-cache-update"
+UNINSTALL="/usr/local/sbin/facility-cache-uninstall"
 [[ -x "$APPLY" ]] || APPLY="${_here}/../sbin/facility-cache-apply"
 [[ -x "$PROBE" ]] || PROBE="${_here}/facility-cache-probe"
 [[ -x "$UPDATE" ]] || UPDATE="${_here}/../sbin/facility-cache-update"
+[[ -x "$UNINSTALL" ]] || UNINSTALL="${_here}/../uninstall.sh"
 
 cmd="${1:-status}"
 shift || true
@@ -40,6 +43,7 @@ status) exec "$APPLY" --status "$@" ;;
 apply) exec "$APPLY" "$@" ;;
 probe) exec "$PROBE" "$@" ;;
 update) exec "$UPDATE" "$@" ;;
+uninstall) exec "$UNINSTALL" "$@" ;;
 log)
   UI_PY="$LIB/facility_ui.py"
   [[ -r "$UI_PY" ]] || UI_PY="/usr/local/lib/facility-cache/facility_ui.py"
