@@ -115,10 +115,16 @@ file_is_managed() {
 
 write_managed() {
   local path="$1"
-  local dir
+  local dir tmp
   dir="$(dirname "$path")"
   mkdir -p "$dir"
-  cat >"$path"
+  tmp="${path}.tmp"
+  cat >"$tmp"
+  if [[ -f "$path" ]] && cmp -s "$tmp" "$path"; then
+    rm -f "$tmp"
+    return 0
+  fi
+  mv -f "$tmp" "$path"
 }
 
 remove_managed() {

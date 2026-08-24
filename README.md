@@ -42,14 +42,16 @@ sudo ./linux/install.sh
 
 Options: `--no-docker`, `--no-restart-docker`.
 
-Uninstall:
+Uninstall (installed clients don't need the checkout — `uninstall.sh` ships to `/usr/local/sbin/facility-cache-uninstall`):
 
 ```bash
-sudo ./linux/uninstall.sh
-sudo ./linux/uninstall.sh --keep-docker
+sudo facility-cache uninstall
+sudo facility-cache uninstall --keep-docker
 ```
 
 Client files, timers, and drop-ins are removed. `/etc/facility-cache/config` and the event log under `/var/log/facility-cache/` are left in place.
+
+If install found a `daemon.json.facility-cache.bak`, uninstall restores it exactly — whatever was live in `daemon.json` right before that restore (our entries, plus any manual edits made since install) is saved first to `daemon.json.facility-cache.uninstalled`, so nothing is silently lost.
 
 Local overrides (kept across updates): `/etc/facility-cache/config`
 
@@ -94,7 +96,7 @@ Uninstall:
 .\windows\Uninstall-FacilityCache.ps1
 ```
 
-Scheduled tasks and drop-ins are removed; `config.json` and the event log under `logs\` are preserved (shipped alongside the uninstaller hardening in this release).
+Scheduled tasks and drop-ins are removed; `config.json` and the event log under `logs\` are preserved.
 
 Local overrides: `C:\ProgramData\FacilityCache\config.json` (start from `{}`).
 Package defaults: `C:\ProgramData\FacilityCache\defaults.json` (replaced on each release).
@@ -149,4 +151,6 @@ Pack locally without tagging: `python3 scripts/pack-release.py`
 - Auto-update does **not** restart Docker; restart it yourself if `daemon.json` changed.
 - Disable auto-update: `AUTO_UPDATE=0` in `/etc/facility-cache/config`, or `"AutoUpdate": false` in the Windows `config.json`.
 - Existing `/etc/pip.conf` or `/etc/npmrc` without a `facility-cache-managed` marker is left alone.
+- Docker's `registry-mirrors` / `insecure-registries` are written once at install/update time and **stay in `daemon.json` off-site too** — unlike pip/npm/uv they are not toggled on network change. dockerd only reads `daemon.json` at start (or a `docker restart docker`), so gating them on the LAN probe would mean restarting the daemon every time the network changes. Entries are always exact `host:port` strings (never a bare hostname or wildcard), so this only affects pulls explicitly addressed to that host:port — accepted trade-off for the trusted-LAN model.
+- Changing `CACHE_HOST` between releases only *adds* the new host's entries to `daemon.json` — it does not remove the old host's. Old-host entries accumulate until something explicitly restores/edits `daemon.json` (uninstall's backup-restore does this; a plain update does not).
 - Trust model, integrity checks, and release-publishing controls: see [`docs/SECURITY.md`](docs/SECURITY.md).
