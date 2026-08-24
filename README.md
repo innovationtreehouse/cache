@@ -24,15 +24,38 @@ The cache host itself (`192.168.1.200`, apt-cacher-ng/devpi/verdaccio/Docker mir
 
 > Delivery Optimization only honors the DHCP option 235 cache host on Windows Pro/Enterprise/Education. **Windows Home ignores that policy entirely** and always goes straight to Microsoft's CDN — there is no workaround for that edition here.
 
+## GitHub CLI on client machines
+
+Attestation checks (`gh attestation verify`) do not run unless the GitHub
+CLI is on PATH. Without it, first install and the daily updater still
+SHA-256 the archive and install — they just never check that
+`release.yml` built those bytes. Put `gh` on every machine that runs this
+client. Details: [`docs/SECURITY.md`](docs/SECURITY.md).
+
+- Ubuntu: add [GitHub's apt repo](https://github.com/cli/cli/blob/trunk/docs/install_linux.md), then `sudo apt install gh`. Do not `curl | bash` the gh installer.
+- Windows: `winget install GitHub.cli`
+
+No `gh auth login` is required for this public repo.
+
 ## Ubuntu — first install from a Release
 
-`innovationtreehouse/cache` is a public repo, so this is plain, unauthenticated `curl | sudo bash` — no token, no `gh auth login`:
+`innovationtreehouse/cache` is a public repo — no token, no `gh auth login`.
+Download, verify the bootstrap script, then run it:
 
 ```bash
-curl -fsSL https://github.com/innovationtreehouse/cache/releases/latest/download/install-linux.sh | sudo bash
+curl -fsSL -o install-linux.sh \
+  https://github.com/innovationtreehouse/cache/releases/latest/download/install-linux.sh
+gh attestation verify install-linux.sh --repo innovationtreehouse/cache \
+  --signer-workflow innovationtreehouse/cache/.github/workflows/release.yml \
+  --deny-self-hosted-runners
+sudo bash install-linux.sh
 facility-cache status
 facility-cache version
 ```
+
+`curl | sudo bash` still works and skips verifying the bootstrap script
+before it runs. The script will still attest the tarball it downloads, but
+only if `gh` is already on PATH.
 
 From a git checkout instead:
 
@@ -57,7 +80,7 @@ Local overrides (kept across updates): `/etc/facility-cache/config`
 
 `/etc/facility-cache/github-token` (mode 600) is **only needed if this repo ever goes private again** — but if the file exists, its contents are still sent as a bearer token on every GitHub API call. Delete it if it's stale or you don't need it; a bad token in there will break updates even on a public repo.
 
-A 5-minute timer re-applies LAN detection. A **daily** timer (with jitter) checks GitHub for a newer release, verifies `manifest.json` SHA-256, and re-runs `install.sh` without restarting Docker. See `docs/SECURITY.md` for the self-update integrity/authenticity model in full.
+A 5-minute timer re-applies LAN detection. A **daily** timer (with jitter) checks GitHub for a newer release, verifies `manifest.json` SHA-256 (and GitHub Artifact Attestations if `gh` is on PATH), and re-runs `install.sh` without restarting Docker. See `docs/SECURITY.md` for the self-update integrity/authenticity model in full.
 
 Commands draw a live terminal dashboard (steps, bars, on/off glyphs). The same events are appended as JSON lines you can fetch later:
 
@@ -73,13 +96,17 @@ facility-cache log --path           # where the file lives
 
 ## Windows — first install from a Release
 
-Elevated PowerShell. Same public-repo, no-auth model as Linux — no token needed:
+Elevated PowerShell. Same public-repo, no-auth model as Linux — no token needed.
+Verify the bootstrap script before executing it:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 Invoke-WebRequest -UseBasicParsing `
   https://github.com/innovationtreehouse/cache/releases/latest/download/install-windows.ps1 `
   -OutFile install-windows.ps1
+gh attestation verify .\install-windows.ps1 --repo innovationtreehouse/cache `
+  --signer-workflow innovationtreehouse/cache/.github/workflows/release.yml `
+  --deny-self-hosted-runners
 .\install-windows.ps1
 ```
 

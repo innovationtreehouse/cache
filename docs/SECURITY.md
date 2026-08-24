@@ -92,6 +92,34 @@ Free GitHub Artifact Attestations require the repo to be **public** (or GitHub
 Enterprise Cloud with the add-on). If `innovationtreehouse/cache` ever goes
 private, re-check this before assuming attestation verification still works.
 
+## GitHub CLI on client machines
+
+Attestation verification is a no-op unless `gh` is on PATH. Install it on
+every Ubuntu and Windows machine that runs this client so first install and
+the daily updater actually check provenance. SHA-256 still runs either way;
+without `gh` that is the only check.
+
+This is a fleet requirement, not a code hard-fail: the client still
+installs if `gh` is missing, so a machine without it is silently weaker,
+not bricked.
+
+Install `gh` from a GPG-signed channel:
+
+- **Ubuntu** — GitHub's apt repository (see
+  [cli/cli install_linux.md](https://github.com/cli/cli/blob/trunk/docs/install_linux.md)),
+  then `sudo apt install gh`. Do not `curl | bash` GitHub's installer
+  script. Do not fetch `gh` through the facility pip or Docker caches.
+  Ubuntu universe's `gh` is often too old for `--signer-workflow` and
+  `--deny-self-hosted-runners`.
+- **Windows** — `winget install GitHub.cli`
+
+No `gh auth login` is required for this public repo.
+
+Recommended first install verifies `install-linux.sh` /
+`install-windows.ps1` **before** executing them. `curl | sudo bash` cannot
+do that — it runs the bootstrap script, which then verifies the archive
+only if `gh` is already present. See `README.md`.
+
 ## Release-publishing controls
 
 `release.yml` only publishes from a `vX.Y.Z` tag ref whose value matches
