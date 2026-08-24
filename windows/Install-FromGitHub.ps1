@@ -57,6 +57,33 @@ try {
     if ($got -ne $expect) { throw "sha256 mismatch: $got != $expect" }
     Write-Host "  +  verified  v$($manifest.version)" -ForegroundColor Green
 
+    $ghCmd = Get-Command gh -ErrorAction SilentlyContinue
+    if ($ghCmd) {
+        $attested = $false
+        try {
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = $ghCmd.Path
+            $psi.Arguments = "attestation verify `"$zip`" --repo $GitHubRepo --signer-workflow $GitHubRepo/.github/workflows/release.yml --deny-self-hosted-runners"
+            $psi.UseShellExecute = $false
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            if ($GitHubToken) { $psi.EnvironmentVariables['GH_TOKEN'] = $GitHubToken }
+            $proc = [System.Diagnostics.Process]::Start($psi)
+            if ($proc.WaitForExit(30000)) {
+                $attested = ($proc.ExitCode -eq 0)
+            } else {
+                $proc.Kill()
+            }
+        } catch {
+            $attested = $false
+        }
+        if ($attested) {
+            Write-Host "  +  attested  $name" -ForegroundColor Green
+        } else {
+            Write-Host '  !  attestation unavailable — continuing on sha256 only' -ForegroundColor Yellow
+        }
+    }
+
     Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
     $installer = Get-ChildItem -Path $tmp -Recurse -Filter 'Install-FacilityCache.ps1' | Select-Object -First 1
     if (-not $installer) { throw 'zip missing windows/Install-FacilityCache.ps1' }

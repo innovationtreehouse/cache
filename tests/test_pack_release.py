@@ -105,6 +105,22 @@ class PackTest(unittest.TestCase):
             (ROOT / "windows" / "Install-FromGitHub.ps1").read_bytes(),
         )
 
+    def test_release_workflow_attests_every_published_asset(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        for name in (
+            "facility-cache-client-linux.tar.gz",
+            "facility-cache-client-windows.zip",
+            "manifest.json",
+            "SHA256SUMS",
+            "install-linux.sh",
+            "install-windows.ps1",
+        ):
+            self.assertIn(
+                f"dist/{name}",
+                workflow,
+                f"{name} is packed and published but not attested",
+            )
+
 
 if __name__ == "__main__":
     sys.exit(unittest.main())

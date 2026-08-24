@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Install a newer GitHub Release of facility-cache-client, if one exists."""
+
 from __future__ import annotations
 
 import argparse
@@ -138,6 +139,10 @@ def verify_attestation(tar_path: Path, repo: str, token: str) -> bool:
     reason, the caller just logs a warning and keeps trusting sha256.
     A hard-fail flag (refuse to install without a verified attestation) can
     come later once attestations have been live for a while.
+
+    Pins --signer-workflow to this repo's release.yml so a different
+    workflow with attestations:write cannot satisfy the check, and
+    --deny-self-hosted-runners so only GitHub-hosted runners count.
     """
     gh = shutil.which("gh")
     if not gh:
@@ -147,8 +152,22 @@ def verify_attestation(tar_path: Path, repo: str, token: str) -> bool:
         env.setdefault("GH_TOKEN", token)
     try:
         subprocess.run(
-            [gh, "attestation", "verify", str(tar_path), "--repo", repo],
-            check=True, capture_output=True, text=True, timeout=30, env=env,
+            [
+                gh,
+                "attestation",
+                "verify",
+                str(tar_path),
+                "--repo",
+                repo,
+                "--signer-workflow",
+                f"{repo}/.github/workflows/release.yml",
+                "--deny-self-hosted-runners",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
         )
         return True
     except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired):
@@ -185,9 +204,13 @@ def install_tarball(tar_path: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Update facility-cache-client from GitHub Releases")
+    parser = argparse.ArgumentParser(
+        description="Update facility-cache-client from GitHub Releases"
+    )
     parser.add_argument("--check", action="store_true", help="print versions and exit")
-    parser.add_argument("--force", action="store_true", help="reinstall even if up to date")
+    parser.add_argument(
+        "--force", action="store_true", help="reinstall even if up to date"
+    )
     args = parser.parse_args()
 
     ui = Ui("update")
@@ -211,7 +234,9 @@ def main() -> int:
         release = latest_release(cfg)
     except urllib.error.HTTPError as exc:
         if not args.check:
-            write_state({"installed_version": local, "last_result": f"github http {exc.code}"})
+            write_state(
+                {"installed_version": local, "last_result": f"github http {exc.code}"}
+            )
         ui.step_fail("github", f"HTTP {exc.code}")
         if exc.code == 404:
             ui.note("no release yet — tag vX.Y.Z on the GitHub repo")
@@ -219,7 +244,9 @@ def main() -> int:
         return 0 if not args.check else 1
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         if not args.check:
-            write_state({"installed_version": local, "last_result": f"github error: {exc}"})
+            write_state(
+                {"installed_version": local, "last_result": f"github error: {exc}"}
+            )
         ui.step_fail("github", str(exc))
         ui.finish(False, "could not check GitHub")
         return 0 if not args.check else 1
@@ -229,7 +256,13 @@ def main() -> int:
         manifest = load_manifest(release, cfg)
     except Exception as exc:  # noqa: BLE001
         if not args.check:
-            write_state({"installed_version": local, "last_result": f"manifest: {exc}", "latest_tag": tag})
+            write_state(
+                {
+                    "installed_version": local,
+                    "last_result": f"manifest: {exc}",
+                    "latest_tag": tag,
+                }
+            )
         ui.step_fail("github", f"manifest: {exc}")
         ui.finish(False, "release incomplete")
         return 0 if not args.check else 1

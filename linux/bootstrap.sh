@@ -118,6 +118,20 @@ NAME="$(cat "$TMP/asset-name")"
 VER="$(cat "$TMP/version" 2>/dev/null || true)"
 ok "verified ${NAME}${VER:+  v$VER}"
 
+if command -v gh >/dev/null 2>&1; then
+  if [[ -n "$TOKEN" ]]; then
+    export GH_TOKEN="$TOKEN"
+  fi
+  if gh attestation verify "$TMP/$NAME" \
+    --repo "$REPO" \
+    --signer-workflow "${REPO}/.github/workflows/release.yml" \
+    --deny-self-hosted-runners >/dev/null 2>&1; then
+    ok "attested  ${NAME}"
+  else
+    say "${DIM}attestation unavailable — continuing on sha256 only${RST}"
+  fi
+fi
+
 tar -xzf "$TMP/$NAME" -C "$TMP"
 INSTALLER="$(find "$TMP" -path '*/linux/install.sh' -print | head -n1)"
 if [[ -z "$INSTALLER" ]]; then

@@ -50,23 +50,75 @@ the FQDN resolve to `EXPECTED_IP`. See [`HTTPS.md`](HTTPS.md).
 
 The daily update timer always verifies the downloaded release tarball/zip
 against the SHA-256 in `manifest.json` before installing — that check is
-unconditional and always enforced.
+unconditional and always enforced. First-install bootstrap
+(`install-linux.sh` / `install-windows.ps1`) does the same for the archive
+it downloads.
 
-On top of that, both updaters (`linux/sbin/facility-cache-update`,
-`windows/FacilityCache.psm1`) verify the artifact's GitHub Artifact
-Attestation (`gh attestation verify`) — a Sigstore-backed, cryptographic
-record that the artifact was built by this repo's `release.yml`, not
-hand-uploaded. This is a best-effort layer on top of SHA-256, not a
-replacement: if `gh` isn't installed or the attestation check fails for any
-reason (offline, rate-limited, repo not public yet), the updater logs a
-warning and falls back to the SHA-256 check alone, so a fleet without `gh`
-never bricks. A hard-fail mode (refuse to install without a verified
-attestation) is a deliberate future option once attestations have been live
-long enough to trust as a hard gate.
+`release.yml` attests **every file it publishes** with GitHub Artifact
+Attestations (`actions/attest-build-provenance`):
+
+- `facility-cache-client-linux.tar.gz`
+- `facility-cache-client-windows.zip`
+- `manifest.json`
+- `SHA256SUMS`
+- `install-linux.sh`
+- `install-windows.ps1`
+
+That is a Sigstore-backed record that those bytes were produced by this
+repo's `release.yml` on a GitHub-hosted runner, not hand-uploaded onto a
+Release. Clients with `gh` then verify the downloaded archive:
+
+```
+gh attestation verify FILE --repo innovationtreehouse/cache \
+  --signer-workflow innovationtreehouse/cache/.github/workflows/release.yml \
+  --deny-self-hosted-runners
+```
+
+`--signer-workflow` so a different workflow in the repo with
+`attestations: write` cannot satisfy the check.
+`--deny-self-hosted-runners` so only GitHub-hosted runners count.
+
+Both updaters (`linux/sbin/facility-cache-update`,
+`windows/FacilityCache.psm1`) and both bootstraps run that check when `gh`
+is on PATH. It is a best-effort layer on top of SHA-256, not a replacement:
+if `gh` isn't installed or the check fails for any reason (offline,
+rate-limited, repo not public yet), the client logs a warning and falls
+back to SHA-256 alone, so a fleet without `gh` never bricks. A hard-fail
+mode (refuse to install without a verified attestation) is a deliberate
+future option once attestations have been live long enough to trust as a
+hard gate.
 
 Free GitHub Artifact Attestations require the repo to be **public** (or GitHub
 Enterprise Cloud with the add-on). If `innovationtreehouse/cache` ever goes
 private, re-check this before assuming attestation verification still works.
+
+## GitHub CLI on client machines
+
+Attestation verification is a no-op unless `gh` is on PATH. Install it on
+every Ubuntu and Windows machine that runs this client so first install and
+the daily updater actually check provenance. SHA-256 still runs either way;
+without `gh` that is the only check.
+
+This is a fleet requirement, not a code hard-fail: the client still
+installs if `gh` is missing, so a machine without it is silently weaker,
+not bricked.
+
+Install `gh` from a GPG-signed channel:
+
+- **Ubuntu** — GitHub's apt repository (see
+  [cli/cli install_linux.md](https://github.com/cli/cli/blob/trunk/docs/install_linux.md)),
+  then `sudo apt install gh`. Do not `curl | bash` GitHub's installer
+  script. Do not fetch `gh` through the facility pip or Docker caches.
+  Ubuntu universe's `gh` is often too old for `--signer-workflow` and
+  `--deny-self-hosted-runners`.
+- **Windows** — `winget install GitHub.cli`
+
+No `gh auth login` is required for this public repo.
+
+Recommended first install verifies `install-linux.sh` /
+`install-windows.ps1` **before** executing them. `curl | sudo bash` cannot
+do that — it runs the bootstrap script, which then verifies the archive
+only if `gh` is already present. See `README.md`.
 
 ## Release-publishing controls
 
