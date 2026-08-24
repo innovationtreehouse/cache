@@ -180,7 +180,19 @@ mkdir -p "$RUN_DIR"
 # /run is tmpfs: world-readable env for profile.d, not secrets.
 chmod 755 "$RUN_DIR"
 
+# Refuse to touch a pre-existing file we didn't write ourselves.
+# Returns 0 (skip) if the caller should leave path alone.
+skip_if_unmanaged() {
+  local path="$1" label="$2"
+  if [[ -f "$path" ]] && ! file_is_managed "$path"; then
+    ui_log warn skip "${label}: ${path} exists and is not facility-cache-managed; leaving as-is"
+    return 0
+  fi
+  return 1
+}
+
 write_pip() {
+  skip_if_unmanaged "$PIP_PATH" pip && return 0
   write_managed "$PIP_PATH" <<EOF
 # ${MANAGED_MARKER} — do not edit; facility-cache-apply rewrites this.
 [global]
@@ -190,9 +202,7 @@ EOF
 }
 
 write_npm() {
-  if [[ -f "$NPMRC" ]] && ! file_is_managed "$NPMRC"; then
-    return 0
-  fi
+  skip_if_unmanaged "$NPMRC" npm && return 0
   write_managed "$NPMRC" <<EOF
 # ${MANAGED_MARKER} — do not edit; facility-cache-apply rewrites this.
 registry=$(npm_registry_url)
@@ -200,9 +210,7 @@ EOF
 }
 
 write_uv() {
-  if [[ -f "$UV_TOML" ]] && ! file_is_managed "$UV_TOML"; then
-    return 0
-  fi
+  skip_if_unmanaged "$UV_TOML" uv && return 0
   write_managed "$UV_TOML" <<EOF
 # ${MANAGED_MARKER} — do not edit; facility-cache-apply rewrites this.
 index-url = "$(pypi_index_url)"
