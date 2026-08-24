@@ -681,7 +681,7 @@ function Update-FacilityCacheClient {
                 # only for this child process rather than the whole session.
                 $psi = New-Object System.Diagnostics.ProcessStartInfo
                 $psi.FileName = $ghCmd.Path
-                $psi.Arguments = "attestation verify `"$zip`" --repo $repo"
+                $psi.Arguments = "attestation verify `"$zip`" --repo $repo --signer-workflow $repo/.github/workflows/release.yml --deny-self-hosted-runners"
                 $psi.UseShellExecute = $false
                 $psi.RedirectStandardOutput = $true
                 $psi.RedirectStandardError = $true

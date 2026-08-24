@@ -132,7 +132,10 @@ GitHub Actions packs:
 - `SHA256SUMS`
 - `install-linux.sh` / `install-windows.ps1`
 
-and publishes them on the GitHub Release. Clients pick that up on the next daily check (or immediately with `facility-cache update`).
+Each of those files is attested (build provenance from `release.yml`) before
+the Release is published. Clients with `gh` verify the archive they download.
+See `docs/SECURITY.md`. Clients pick a new release up on the next daily check
+(or immediately with `facility-cache update`).
 
 Pack locally without tagging: `python3 scripts/pack-release.py`
 
