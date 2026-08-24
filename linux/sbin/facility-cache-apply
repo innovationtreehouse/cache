@@ -13,6 +13,11 @@ fi
 if [[ -n "$_LIB" && -r "$_LIB" ]]; then
   # shellcheck disable=SC1090
   source "$_LIB"
+  _ENSURE="$(dirname "$_LIB")/ensure_gh.sh"
+  if [[ -r "$_ENSURE" ]]; then
+    # shellcheck disable=SC1090
+    source "$_ENSURE"
+  fi
 else
   echo "facility-cache-apply: common.sh not found" >&2
   exit 2
@@ -125,6 +130,11 @@ print_status() {
   [[ "$AUTO_UPDATE" == 0 || "$AUTO_UPDATE" == false ]] && auto_k=off
   ui_kv "updates" "auto=${AUTO_UPDATE}" "$auto_k"
   ui_kv "repo" "$GITHUB_REPO"
+  if command -v gh >/dev/null 2>&1; then
+    ui_kv "gh" "$(gh --version 2>/dev/null | head -n1 | tr -d '\r')" on
+  else
+    ui_kv "gh" "missing" off
+  fi
   if [[ -r "$STATE_FILE" ]]; then
     python3 - "$STATE_FILE" <<'PY' 2>/dev/null || true
 import json, sys
@@ -280,6 +290,12 @@ else
 fi
 
 write_env_files
+
+# Keep the gh apt source pointed at apt-cacher-ng on-site and at GitHub
+# off-site. Do not apt-get install here — that is install/update/bootstrap.
+if declare -F github_cli_write_source >/dev/null 2>&1; then
+  github_cli_write_source >/dev/null 2>&1 || true
+fi
 
 ui_init apply
 ui_log info apply "pypi=$PYPI_ON npm=$NPM_ON dns=$(dns_matches_expected && echo ok || echo miss)"

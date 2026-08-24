@@ -26,16 +26,16 @@ The cache host itself (`192.168.1.200`, apt-cacher-ng/devpi/verdaccio/Docker mir
 
 ## GitHub CLI on client machines
 
-Attestation checks (`gh attestation verify`) do not run unless the GitHub
-CLI is on PATH. Without it, first install and the daily updater still
-SHA-256 the archive and install — they just never check that
-`release.yml` built those bytes. Put `gh` on every machine that runs this
-client. Details: [`docs/SECURITY.md`](docs/SECURITY.md).
+First install and the daily updater install `gh` if it is missing, and
+upgrade it when GitHub's apt repo / winget has a newer version. On the
+facility LAN the Ubuntu package is fetched through apt-cacher-ng
+(`http://cache…:3142/https://cli.github.com/packages`) so later machines
+reuse the cached `.deb`. Off-site, and on Windows (winget or the GitHub
+Releases MSI), it is a direct GitHub download.
 
-- Ubuntu: add [GitHub's apt repo](https://github.com/cli/cli/blob/trunk/docs/install_linux.md), then `sudo apt install gh`. Do not `curl | bash` the gh installer.
-- Windows: `winget install GitHub.cli`
-
-No `gh auth login` is required for this public repo.
+No `gh auth login` is required for this public repo. If `gh` still cannot
+be installed, SHA-256 still runs and attestations stay warn-only. Details:
+[`docs/SECURITY.md`](docs/SECURITY.md).
 
 ## Ubuntu — first install from a Release
 
@@ -54,8 +54,8 @@ facility-cache version
 ```
 
 `curl | sudo bash` still works and skips verifying the bootstrap script
-before it runs. The script will still attest the tarball it downloads, but
-only if `gh` is already on PATH.
+before it runs. The script installs `gh` if needed, then attests the
+tarball it downloaded.
 
 From a git checkout instead:
 

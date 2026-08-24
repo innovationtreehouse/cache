@@ -118,6 +118,28 @@ NAME="$(cat "$TMP/asset-name")"
 VER="$(cat "$TMP/version" 2>/dev/null || true)"
 ok "verified ${NAME}${VER:+  v$VER}"
 
+tar -xzf "$TMP/$NAME" -C "$TMP"
+INSTALLER="$(find "$TMP" -path '*/linux/install.sh' -print | head -n1)"
+if [[ -z "$INSTALLER" ]]; then
+  fail "tarball missing linux/install.sh"
+  exit 1
+fi
+ok "extracted"
+
+LINUX_DIR="$(dirname "$INSTALLER")"
+if [[ -r "$LINUX_DIR/lib/common.sh" && -r "$LINUX_DIR/lib/ensure_gh.sh" ]]; then
+  # shellcheck disable=SC1091
+  source "$LINUX_DIR/lib/common.sh"
+  # shellcheck disable=SC1091
+  source "$LINUX_DIR/lib/ensure_gh.sh"
+  say "${CYN}●${RST} ${BOLD}gh${RST}  ${DIM}GitHub CLI${RST}"
+  if github_cli_ensure; then
+    ok "$(gh --version 2>/dev/null | head -n1 | tr -d '\r' || echo gh)"
+  else
+    say "${DIM}gh not installed — continuing on sha256 only${RST}"
+  fi
+fi
+
 if command -v gh >/dev/null 2>&1; then
   if [[ -n "$TOKEN" ]]; then
     export GH_TOKEN="$TOKEN"
@@ -132,11 +154,5 @@ if command -v gh >/dev/null 2>&1; then
   fi
 fi
 
-tar -xzf "$TMP/$NAME" -C "$TMP"
-INSTALLER="$(find "$TMP" -path '*/linux/install.sh' -print | head -n1)"
-if [[ -z "$INSTALLER" ]]; then
-  fail "tarball missing linux/install.sh"
-  exit 1
-fi
-ok "extracted  running installer"
+ok "running installer"
 bash "$INSTALLER"

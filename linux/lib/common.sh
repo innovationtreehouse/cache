@@ -133,3 +133,14 @@ remove_managed() {
     rm -f "$path"
   fi
 }
+
+# True when apt's Proxy-Auto-Detect URI is already the cache itself.
+# Rewritten HTTPS backends are http://CACHE_HOST:APT_PORT/https://… — proxying
+# those through :3142 again would double-prefix the URL.
+apt_proxy_should_direct() {
+  local uri="${1:-}"
+  local rest host
+  rest="${uri#*://}"
+  host="${rest%%[:/]*}"
+  [[ -n "$host" && ("$host" == "$CACHE_HOST" || "$host" == "$EXPECTED_IP") ]]
+}
