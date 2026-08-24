@@ -21,6 +21,10 @@ forwarding it in) without revisiting this assumption — this repo's DNS design
 (the FQDN doesn't resolve off-site, see `README.md`) is the control that keeps
 it LAN-only today, and it's a DNS-based control, not a network ACL.
 
+Putting a public TLS certificate on the cache host (and dropping pip/Docker
+HTTP bypasses) is a planned follow-up. The client will keep requiring that
+the FQDN resolve to `EXPECTED_IP`. See [`HTTPS.md`](HTTPS.md).
+
 ## Integrity, package by package
 
 - **apt** — untouched. `Acquire::http::Proxy-Auto-Detect` only changes *where*
