@@ -123,6 +123,30 @@ def latest_release(cfg: dict[str, str]) -> dict:
     return json.loads(body.decode("utf-8"))
 
 
+def repo_identity(cfg: dict[str, str]) -> dict:
+    repo = cfg.get("GITHUB_REPO", "innovationtreehouse/cache")
+    body = github_request(f"https://api.github.com/repos/{repo}", cfg)
+    return json.loads(body.decode("utf-8"))
+
+
+def identity_verdict(pinned: str, meta: dict, repo: str) -> tuple[str, str]:
+    """Compare the pinned numeric repo id against what the name resolves to.
+
+    A GitHub rename leaves the old name redirecting, so a re-registered old
+    name could silently serve someone else's releases. The numeric id is
+    immutable: same id under a new name is a legitimate rename ("renamed");
+    a different id means the name no longer points at our repository
+    ("mismatch") and nothing may be installed from it.
+    """
+    actual = meta.get("id")
+    if str(actual) != pinned:
+        return "mismatch", f"repo id {actual} != pinned {pinned}"
+    full = str(meta.get("full_name") or repo)
+    if full != repo:
+        return "renamed", full
+    return "ok", str(actual)
+
+
 def asset_map(release: dict) -> dict[str, dict]:
     return {a["name"]: a for a in release.get("assets") or []}
 
@@ -262,7 +286,7 @@ def main() -> int:
     args = parser.parse_args()
 
     ui = Ui("update")
-    ui.n = 6
+    ui.n = 7
     local = installed_version()
     ui.banner("facility-cache-client", f"update  v{local}")
 
@@ -276,6 +300,37 @@ def main() -> int:
     auto = cfg.get("AUTO_UPDATE", "1").lower() not in ("0", "false", "no", "off")
     ui.kv("repo", repo, "work")
     ui.kv("installed", local, "ok")
+
+    pinned = cfg.get("GITHUB_REPO_ID", "").strip()
+    if pinned:
+        ui.step("identity", f"repo id {pinned}")
+        try:
+            meta = repo_identity(cfg)
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            if not args.check:
+                write_state(
+                    {"installed_version": local, "last_result": f"github error: {exc}"}
+                )
+            ui.step_fail("identity", str(exc))
+            ui.finish(False, "could not check GitHub")
+            return 0 if not args.check else 1
+        verdict, detail = identity_verdict(pinned, meta, repo)
+        if verdict == "mismatch":
+            # Never transient: the name resolves to a different repository, so
+            # fail the unit loudly instead of the usual quiet-timer exit 0.
+            if not args.check:
+                write_state(
+                    {"installed_version": local, "last_result": f"refused: {detail}"}
+                )
+            ui.step_fail("identity", detail)
+            ui.note("the repository name may have been re-registered — refusing to install from it")
+            ui.finish(False, "refusing to update")
+            return 1
+        if verdict == "renamed":
+            ui.step_ok("identity", f"id {pinned}  (now named {detail})")
+            ui.note(f"repo renamed to {detail} — update GITHUB_REPO in /etc/facility-cache/config")
+        else:
+            ui.step_ok("identity", f"id {detail}")
 
     ui.step("github", "latest release")
     try:

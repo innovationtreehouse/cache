@@ -6,6 +6,8 @@
 [CmdletBinding()]
 param(
     [string]$GitHubRepo = $(if ($env:GITHUB_REPO) { $env:GITHUB_REPO } else { 'innovationtreehouse/cache' }),
+    # Immutable numeric id of GitHubRepo — a re-registered name cannot fake it.
+    [string]$GitHubRepoId = $(if ($env:GITHUB_REPO_ID) { $env:GITHUB_REPO_ID } else { '1343160243' }),
     [string]$GitHubToken = $(if ($env:GITHUB_TOKEN) { $env:GITHUB_TOKEN } else { '' })
 )
 
@@ -27,6 +29,15 @@ $headers = @{
     Accept       = 'application/vnd.github+json'
 }
 if ($GitHubToken) { $headers['Authorization'] = "Bearer $GitHubToken" }
+
+if ($GitHubRepoId) {
+    $meta = Invoke-RestMethod -Uri "https://api.github.com/repos/$GitHubRepo" -Headers $headers
+    if ([string]$meta.id -ne [string]$GitHubRepoId) {
+        Write-Host "  X  repo id $($meta.id) does not match pinned $GitHubRepoId — refusing to install" -ForegroundColor Red
+        throw 'Repository id mismatch (name may have been re-registered)'
+    }
+    Write-Boot "repo id $GitHubRepoId" 'Green'
+}
 
 $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$GitHubRepo/releases/latest" -Headers $headers
 $assets = @{}

@@ -10,6 +10,7 @@ $script:DefaultConfig = @{
     DockerGhcrPort   = 5001
     ProbeTimeoutMs   = 1000
     GitHubRepo       = 'innovationtreehouse/cache'
+    GitHubRepoId     = 1343160243
     AutoUpdate       = $true
 }
 
@@ -622,7 +623,7 @@ function Update-FacilityCacheClient {
     $cfg = Get-FacilityCacheConfig
     $local = Get-FacilityCacheInstalledVersion
     $repo = $cfg.GitHubRepo
-    $script:FcStepN = 5
+    $script:FcStepN = 6
     Write-FcHeader 'facility-cache-client' "update  v$local"
     Write-FcKv 'repo' $repo 'work'
     Write-FcKv 'installed' $local 'ok'
@@ -631,6 +632,34 @@ function Update-FacilityCacheClient {
         Accept       = 'application/vnd.github+json'
     }
     if ($cfg.GitHubToken) { $headers['Authorization'] = "Bearer $($cfg.GitHubToken)" }
+
+    if ($cfg.GitHubRepoId) {
+        # A rename leaves the old name redirecting, so a re-registered name
+        # could serve someone else's releases; the numeric id is immutable.
+        Write-FcStep 'identity' "repo id $($cfg.GitHubRepoId)"
+        try {
+            $meta = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo" -Headers $headers
+        } catch {
+            Write-FacilityCacheState @{ installed_version = $local; last_result = "github error: $($_.Exception.Message)" }
+            Write-FcFail $_
+            if ($Check) { throw }
+            Write-FcFinish -Ok $false -Message 'could not check GitHub'
+            return
+        }
+        if ([string]$meta.id -ne [string]$cfg.GitHubRepoId) {
+            Write-FacilityCacheState @{ installed_version = $local; last_result = "refused: repo id $($meta.id) != pinned $($cfg.GitHubRepoId)" }
+            Write-FcFail "Repo id $($meta.id) does not match pinned $($cfg.GitHubRepoId) — the name may have been re-registered; refusing to install from it"
+            if ($Check) { throw "repo id mismatch" }
+            Write-FcFinish -Ok $false -Message 'refusing to update'
+            return
+        }
+        if ($meta.full_name -ne $repo) {
+            Write-FcStepOk "id $($meta.id)  (now named $($meta.full_name))"
+            Write-FcNote "repo renamed to $($meta.full_name) — update GitHubRepo in config.json"
+        } else {
+            Write-FcStepOk "id $($meta.id)"
+        }
+    }
 
     Write-FcStep 'github' 'latest release'
     try {
