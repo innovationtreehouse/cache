@@ -3,7 +3,7 @@
 # Package defaults (updated on each GitHub Release) then local overrides.
 
 CACHE_HOST="${CACHE_HOST:-cache.facility.innovationtreehouse.org}"
-EXPECTED_IP="${EXPECTED_IP:-192.168.1.200}"
+EXPECTED_IP="${EXPECTED_IP:-10.41.1.50}"
 APT_PORT="${APT_PORT:-3142}"
 PYPI_PORT="${PYPI_PORT:-3141}"
 NPM_PORT="${NPM_PORT:-4873}"

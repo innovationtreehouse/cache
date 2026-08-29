@@ -4,7 +4,7 @@
 `linux/lib/common.sh` (`dns_matches_expected` + optional `port_open`). This
 note is the plan for putting a public TLS certificate on
 `cache.facility.innovationtreehouse.org` **without removing** the check that
-the name resolves to `EXPECTED_IP` (`192.168.1.200`).
+the name resolves to `EXPECTED_IP` (`10.41.1.50`).
 
 The cache box is an external dependency (see `README.md`). This repo only
 changes how clients talk to it.
@@ -35,7 +35,7 @@ this LAN** we meant. They stack; neither replaces the other:
 | Situation | IP pin | TLS to the FQDN |
 |---|---|---|
 | Off-site, name NXDOMAINs | Fail | Fail |
-| Another `192.168.1.0/24` with a `.200`, name does not resolve | Fail | Fail |
+| Another LAN with a host at the same IP, name does not resolve | Fail | Fail |
 | DNS poisoned so the name is `.200` but that is not our host | Pass | Fail (no private key) |
 | DNS poisoned to some other IP | Fail | Fail (wrong/no cert) |
 | ARP spoof of `.200` without the key | Pass | Fail |
@@ -122,7 +122,7 @@ or ship a client release that updates `defaults.*`.
 ## Rollout
 
 1. Cert issued and loaded on `.200` for 3141/4873/5000/5001. Confirm
-   `openssl s_client -connect 192.168.1.200:3141 -servername cache.facility.innovationtreehouse.org`
+   `openssl s_client -connect 10.41.1.50:3141 -servername cache.facility.innovationtreehouse.org`
    from a LAN host, and NXDOMAIN for that name off-site.
 2. Client release: `https://` URLs, drop the HTTP bypasses, **keep**
    `EXPECTED_IP`.

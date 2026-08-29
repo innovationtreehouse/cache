@@ -2,13 +2,13 @@
 
 Points Ubuntu and Windows machines at `cache.facility.innovationtreehouse.org` **only while they are on the facility LAN**. Off-site, the hostname does not resolve in public DNS, so clients go direct to Ubuntu/PyPI/npm/Docker Hub/Microsoft.
 
-Never uses `192.168.1.200` or the short name `cache` in client config (those collide on other `192.168.1.0/24` networks). The probe requires the FQDN to resolve to **exactly** `192.168.1.200`.
+Never uses `10.41.1.50` or the short name `cache` in client config (those collide on other networks). The probe requires the FQDN to resolve to **exactly** `10.41.1.50`.
 
 Installed clients **update themselves from GitHub Releases**. A new tag publishes new scripts *and* new package defaults (host, ports, repo). Local override files are not overwritten.
 
 Default repo: `innovationtreehouse/cache`.
 
-The cache host itself (`192.168.1.200`, apt-cacher-ng/devpi/verdaccio/Docker mirrors on ports 3141-5001) is an **external dependency**: this repo only configures clients to find it, it does not provision or run that box. See the org's infra repo for how the cache host is built and kept up.
+The cache host itself (`10.41.1.50`, apt-cacher-ng/devpi/verdaccio/Docker mirrors on ports 3141-5001) is an **external dependency**: this repo only configures clients to find it, it does not provision or run that box. See the org's infra repo for how the cache host is built and kept up.
 
 ## What gets applied
 
@@ -168,8 +168,8 @@ Pack locally without tagging: `python3 scripts/pack-release.py`
 
 ## UniFi (once, on the facility DHCP)
 
-1. Local DNS: `cache.facility.innovationtreehouse.org` → `192.168.1.200`
-2. DHCP DNS = the gateway (`192.168.1.1`), not 8.8.8.8
+1. Local DNS: `cache.facility.innovationtreehouse.org` → `10.41.1.50`
+2. DHCP DNS = the gateway (`10.41.1.1`), not 8.8.8.8
 3. Custom DHCP option **235** (text) = `cache.facility.innovationtreehouse.org`
 4. Do **not** publish a public A record for that name
 

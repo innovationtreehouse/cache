@@ -2,7 +2,7 @@
 
 $script:DefaultConfig = @{
     CacheHost        = 'cache.facility.innovationtreehouse.org'
-    ExpectedIp       = '192.168.1.200'
+    ExpectedIp       = '10.41.1.50'
     AptPort          = 3142
     PypiPort         = 3141
     NpmPort          = 4873
