@@ -34,7 +34,7 @@ the FQDN resolve to `EXPECTED_IP`. See [`HTTPS.md`](HTTPS.md).
 - **pip / uv** — the `trusted-host` / `allow-insecure-host` bypass (needed
   because the cache serves plain HTTP) is written by `facility-cache-apply`
   *only* while the LAN probe confirms we're on-site (DNS matches
-  `192.168.1.200` **and** the pypi port answers). Off-site, those files and
+  `10.41.1.50` **and** the pypi port answers). Off-site, those files and
   env vars are removed. The insecure-TLS window is gated to exactly when the
   cache is actually reachable, not left on unconditionally.
 - **Docker** — `registry-mirrors` and `insecure-registries` in `daemon.json`

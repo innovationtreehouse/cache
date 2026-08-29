@@ -7,7 +7,7 @@
   - Delivery Optimization: DHCP option 235 only (no static cache host)
   - Docker Hub registry-mirrors (engine falls back to docker.io off-site)
   - pip / uv / npm: enabled only while cache.facility.innovationtreehouse.org
-    resolves to 192.168.1.200 and the service port answers
+    resolves to 10.41.1.50 and the service port answers
 #>
 [CmdletBinding()]
 param(

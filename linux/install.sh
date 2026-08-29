@@ -64,7 +64,7 @@ if [[ ! -f /etc/facility-cache/config ]]; then
 # Local overrides. Package defaults are in /usr/local/lib/facility-cache/defaults
 # and are replaced on each GitHub Release.
 #
-# EXPECTED_IP=192.168.1.200
+# EXPECTED_IP=10.41.1.50
 # GITHUB_REPO=innovationtreehouse/cache
 # AUTO_UPDATE=1
 EOF
