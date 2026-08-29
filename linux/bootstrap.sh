@@ -31,6 +31,9 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 REPO="${GITHUB_REPO:-innovationtreehouse/cache}"
+# Immutable numeric id of REPO. A rename leaves the old name redirecting, so a
+# re-registered name could serve someone else's release; the id cannot.
+REPO_ID="${GITHUB_REPO_ID:-1343160243}"
 TOKEN="${GITHUB_TOKEN:-}"
 if [[ -z "$TOKEN" && -r /etc/facility-cache/github-token ]]; then
   TOKEN="$(tr -d ' \n' </etc/facility-cache/github-token)"
@@ -48,6 +51,18 @@ cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT
 
 say "${CYN}●${RST} ${BOLD}github${RST}  ${DIM}${REPO}${RST}"
+if ! curl -fsSL "${AUTH[@]}" -H "User-Agent: facility-cache-client-bootstrap" \
+  -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/${REPO}" >"$TMP/repo.json"; then
+  fail "could not reach GitHub API for ${REPO}"
+  exit 1
+fi
+ACTUAL_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id",""))' "$TMP/repo.json")"
+if [[ "$ACTUAL_ID" != "$REPO_ID" ]]; then
+  fail "repo id ${ACTUAL_ID} does not match pinned ${REPO_ID} — the name may have been re-registered; refusing to install"
+  exit 1
+fi
+ok "repo id ${REPO_ID}"
 if ! curl -fsSL "${AUTH[@]}" -H "User-Agent: facility-cache-client-bootstrap" \
   -H "Accept: application/vnd.github+json" \
   "$API" >"$TMP/release.json"; then

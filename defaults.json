@@ -8,5 +8,6 @@
   "DockerGhcrPort": 5001,
   "ProbeTimeoutMs": 1000,
   "GitHubRepo": "innovationtreehouse/cache",
+  "GitHubRepoId": 1343160243,
   "AutoUpdate": true
 }
