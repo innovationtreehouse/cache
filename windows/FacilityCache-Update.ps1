@@ -1,4 +1,4 @@
-# Scheduled-task / manual entrypoint. Runs as SYSTEM.
+﻿# Scheduled-task / manual entrypoint. Runs as SYSTEM.
 param(
     [switch]$Check,
     [switch]$Force

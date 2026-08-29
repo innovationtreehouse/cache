@@ -1,4 +1,4 @@
-# Facility cache client helpers. Windows PowerShell 5.1 compatible.
+﻿# Facility cache client helpers. Windows PowerShell 5.1 compatible.
 
 $script:DefaultConfig = @{
     CacheHost        = 'cache.facility.innovationtreehouse.org'
