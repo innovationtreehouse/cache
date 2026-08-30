@@ -21,9 +21,16 @@ $root = Split-Path -Parent $here
 $dest = Join-Path $env:ProgramData 'FacilityCache'
 Import-Module (Join-Path $here 'FacilityCache.psm1') -Force
 $script:FcStepN = 7
+# Release zips ship a generated VERSION file; a git checkout has none — the
+# version lives in git tags. Fall back to git describe, then a dev marker.
 $verFile = Join-Path $root 'VERSION'
-$ver = 'unknown'
-if (Test-Path $verFile) { $ver = (Get-Content $verFile -Raw).Trim() }
+$ver = '0.0.0-dev'
+if (Test-Path $verFile) {
+    $ver = (Get-Content $verFile -Raw).Trim().TrimStart('v')
+} elseif (Get-Command git -ErrorAction SilentlyContinue) {
+    $described = (& git -C $root describe --tags --match 'v*' --dirty 2>$null)
+    if ($LASTEXITCODE -eq 0 -and $described) { $ver = ([string]$described).Trim().TrimStart('v') }
+}
 Write-FcHeader 'facility-cache-client' "install  v$ver"
 
 Write-FcStep 'files' 'copying into ProgramData'
@@ -41,12 +48,12 @@ foreach ($name in @(
         Copy-Item -LiteralPath $src -Destination (Join-Path $dest $name) -Force
     }
 }
-foreach ($name in @('VERSION', 'defaults.json')) {
-    $src = Join-Path $root $name
-    if (Test-Path $src) {
-        Copy-Item -LiteralPath $src -Destination (Join-Path $dest $name) -Force
-    }
+$srcDefaults = Join-Path $root 'defaults.json'
+if (Test-Path $srcDefaults) {
+    Copy-Item -LiteralPath $srcDefaults -Destination (Join-Path $dest 'defaults.json') -Force
 }
+# Always record the resolved version (zip VERSION, git describe, or dev).
+$ver | Set-Content -LiteralPath (Join-Path $dest 'VERSION') -Encoding ASCII
 
 $cfgPath = Join-Path $dest 'config.json'
 if (-not (Test-Path $cfgPath)) {

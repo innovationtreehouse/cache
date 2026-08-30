@@ -41,31 +41,30 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Read VERSION
+      # The tag IS the version — there is no VERSION file in the repo. Runs
+      # for both the tag push and workflow_dispatch: dispatch only publishes
+      # when it is run against a vX.Y.Z tag ref (pick that tag under "Use
+      # workflow from" when re-running), so a dispatch from a branch can
+      # never publish an unguarded release.
+      - name: Version from tag
         id: ver
-        run: |
-          VERSION="$(tr -d 'v \n' < VERSION)"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-
-      # Runs for both the tag push and workflow_dispatch: dispatch only
-      # publishes when it is run against a vX.Y.Z tag ref (pick that tag
-      # under "Use workflow from" when re-running), so a dispatch from a
-      # branch can never publish an unguarded release.
-      - name: Ref must be a version tag matching VERSION
         run: |
           if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
             echo "This workflow only publishes from a vX.Y.Z tag ref (got $GITHUB_REF)." >&2
             echo "For workflow_dispatch, pick the tag under 'Use workflow from'." >&2
             exit 1
           fi
-          TAG="${GITHUB_REF_NAME#v}"
-          if [ "$TAG" != "${{ steps.ver.outputs.version }}" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match VERSION ${{ steps.ver.outputs.version }}" >&2
+          VERSION="${GITHUB_REF_NAME#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag $GITHUB_REF_NAME is not vMAJOR.MINOR.PATCH" >&2
             exit 1
           fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Pack assets
+        env:
+          FC_RELEASE_VERSION: ${{ steps.ver.outputs.version }}
         run: python3 scripts/pack-release.py
 
       # Free Artifact Attestations require this repo to stay public (or a
