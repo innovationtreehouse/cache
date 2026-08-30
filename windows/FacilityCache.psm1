@@ -617,6 +617,124 @@ function Sync-FacilityCacheGitHubCli {
     return [bool](Get-Command gh -ErrorAction SilentlyContinue)
 }
 
+function Get-FacilityCacheAttestationBundle {
+    # Fetches every attestation bundle for $Path's sha256 from the PUBLIC
+    # GitHub attestations API (no credentials required — a token, if
+    # supplied, only lifts the 60/hr/IP unauthenticated rate limit) and
+    # returns them newline-joined as JSON Lines (one bundle object per
+    # line — `gh attestation verify --bundle` accepts that form), already
+    # filtered to $RepoId when one is pinned. Returns $null on any failure
+    # or when nothing is left after filtering.
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Repo,
+        [string]$Token,
+        [string]$RepoId
+    )
+    $hash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $headers = @{
+        'User-Agent' = 'facility-cache-client'
+        Accept       = 'application/vnd.github+json'
+    }
+    $uri = "https://api.github.com/repos/$Repo/attestations/sha256:$hash"
+    $resp = $null
+    if ($Token) {
+        $authHeaders = @{}
+        foreach ($k in $headers.Keys) { $authHeaders[$k] = $headers[$k] }
+        $authHeaders['Authorization'] = "Bearer $Token"
+        try {
+            $resp = Invoke-WebRequest -Uri $uri -Headers $authHeaders -UseBasicParsing -TimeoutSec 30
+        } catch {
+            $status = 0
+            if ($_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode }
+            if ($status -eq 401 -or $status -eq 403) {
+                # A stale/bad token — this endpoint is public, so retry once
+                # without it rather than silently disabling attestation.
+                $resp = Invoke-WebRequest -Uri $uri -Headers $headers -UseBasicParsing -TimeoutSec 30
+            } else {
+                throw
+            }
+        }
+    } else {
+        $resp = Invoke-WebRequest -Uri $uri -Headers $headers -UseBasicParsing -TimeoutSec 30
+    }
+
+    # Do NOT round-trip through ConvertFrom-Json/ConvertTo-Json here — that
+    # corrupted the bundle in testing. JavaScriptSerializer preserves it
+    # losslessly, as long as we only serialize the object graph that came
+    # straight out of DeserializeObject rather than one PowerShell has
+    # reassigned piece-by-piece (see Merge-DockerDaemonJson above for why
+    # the latter breaks — PSObject wrappers make it walk a circular ref).
+    Add-Type -AssemblyName System.Web.Extensions -ErrorAction Stop
+    $ser = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+    $ser.MaxJsonLength = [int]::MaxValue
+    $obj = $ser.DeserializeObject($resp.Content)
+    if (-not $obj.ContainsKey('attestations') -or $obj['attestations'].Count -lt 1) { return $null }
+
+    $lines = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($att in $obj['attestations']) {
+        if ($RepoId -and $att.ContainsKey('repository_id') -and ([string]$att['repository_id']) -ne ([string]$RepoId)) {
+            continue
+        }
+        if (-not $att.ContainsKey('bundle') -or $null -eq $att['bundle']) { continue }
+        [void]$lines.Add($ser.Serialize($att['bundle']))
+    }
+    if ($lines.Count -lt 1) { return $null }
+    return [string]::Join("`n", $lines.ToArray())
+}
+
+function Test-FacilityCacheAttestation {
+    # Best-effort, never-throws build-provenance check: verifies $Path's
+    # attestation bundle(s) (see Get-FacilityCacheAttestationBundle above)
+    # offline with `gh attestation verify --bundle`, which needs no
+    # `gh auth login` either. Returns $false on ANY failure: gh missing, no
+    # attestation published, network/API error, tampered file, or a
+    # wedged/failed gh process.
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Repo,
+        [string]$Token,
+        [string]$RepoId
+    )
+    try {
+        $ghCmd = Get-Command gh -ErrorAction SilentlyContinue
+        if (-not $ghCmd) { return $false }
+
+        $bundleJsonl = Get-FacilityCacheAttestationBundle -Path $Path -Repo $Repo -Token $Token -RepoId $RepoId
+        if ($null -eq $bundleJsonl) { return $false }
+
+        $bundleFile = Join-Path $env:TEMP ("facility-cache-bundle-" + [guid]::NewGuid().ToString() + '.jsonl')
+        try {
+            # The Rekor checkpoint envelope embeds a literal U+2014 em-dash,
+            # so this is NOT ASCII-safe (that silently mangled it to '?' and
+            # broke verification in testing). A UTF-8 BOM would also break
+            # Go's JSON parser, so write UTF-8 without one via .NET directly
+            # rather than Set-Content, whose -Encoding UTF8 always adds a BOM.
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText($bundleFile, $bundleJsonl, $utf8NoBom)
+            # Process.Start + WaitForExit(timeout), not `&`, so a wedged gh
+            # can't hang a scheduled task forever.
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = $ghCmd.Path
+            $psi.Arguments = "attestation verify `"$Path`" --repo $Repo --bundle `"$bundleFile`" --signer-workflow $Repo/.github/workflows/release.yml --deny-self-hosted-runners"
+            $psi.UseShellExecute = $false
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $proc = [System.Diagnostics.Process]::Start($psi)
+            if ($proc.WaitForExit(30000)) {
+                return ($proc.ExitCode -eq 0)
+            } else {
+                $proc.Kill()
+                return $false
+            }
+        } finally {
+            Remove-Item -LiteralPath $bundleFile -Force -ErrorAction SilentlyContinue
+        }
+    } catch {
+        return $false
+    }
+}
+
 function Write-FacilityCacheState {
     param($Data)
     $dir = Get-FacilityCacheInstallDir
@@ -777,31 +895,7 @@ function Update-FacilityCacheClient {
         # (or before attestations existed) never bricks. A hard-fail flag can
         # come later.
         Write-FcStep 'attest' 'build provenance'
-        $attested = $false
-        $ghCmd = Get-Command gh -ErrorAction SilentlyContinue
-        if ($ghCmd) {
-            try {
-                # Process.Start + WaitForExit(timeout), not `&`, so a wedged gh
-                # can't hang this scheduled task forever, and GH_TOKEN is set
-                # only for this child process rather than the whole session.
-                $psi = New-Object System.Diagnostics.ProcessStartInfo
-                $psi.FileName = $ghCmd.Path
-                $psi.Arguments = "attestation verify `"$zip`" --repo $repo --signer-workflow $repo/.github/workflows/release.yml --deny-self-hosted-runners"
-                $psi.UseShellExecute = $false
-                $psi.RedirectStandardOutput = $true
-                $psi.RedirectStandardError = $true
-                if ($cfg.GitHubToken) { $psi.EnvironmentVariables['GH_TOKEN'] = $cfg.GitHubToken }
-                $proc = [System.Diagnostics.Process]::Start($psi)
-                if ($proc.WaitForExit(30000)) {
-                    $attested = ($proc.ExitCode -eq 0)
-                } else {
-                    $proc.Kill()
-                }
-            } catch {
-                $attested = $false
-            }
-        }
-        if ($attested) {
+        if (Test-FacilityCacheAttestation -Path $zip -Repo $repo -Token $cfg.GitHubToken -RepoId $cfg.GitHubRepoId) {
             Write-FcStepOk 'verified'
         } else {
             Write-FcWarn 'attestation unavailable — continuing on sha256 only'
@@ -847,6 +941,7 @@ Export-ModuleMember -Function @(
     'Invoke-FacilityCacheApply',
     'Update-FacilityCacheClient',
     'Sync-FacilityCacheGitHubCli',
+    'Test-FacilityCacheAttestation',
     'Write-FcHeader', 'Write-FcKv', 'Write-FcOk', 'Write-FcFail', 'Write-FcWarn',
     'Write-FcNote', 'Write-FcStep', 'Write-FcStepOk', 'Write-FcBar', 'Write-FcFinish'
 )

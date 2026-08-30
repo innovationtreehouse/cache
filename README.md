@@ -33,25 +33,50 @@ facility LAN the Ubuntu package is fetched through apt-cacher-ng
 reuse the cached `.deb`. Off-site, and on Windows (winget or the GitHub
 Releases MSI), it is a direct GitHub download.
 
-No `gh auth login` is required for this public repo. If `gh` still cannot
-be installed, SHA-256 still runs and attestations stay warn-only. Details:
-[`docs/SECURITY.md`](docs/SECURITY.md).
+No `gh auth login` is required for this public repo: the client fetches
+the Sigstore bundle from the public, unauthenticated GitHub attestations
+API and verifies it offline with `gh attestation verify --bundle` — never
+the bare `gh attestation verify --repo ...` form, which *does* require a
+`gh auth login`/token even for a public repo (see the manual-verification
+commands below, and `docs/SECURITY.md`). If `gh` still cannot be
+installed, SHA-256 still runs and attestations stay warn-only.
 
 ## Ubuntu — first install from a Release
 
 `innovationtreehouse/cache` is a public repo — no token, no `gh auth login`.
-Download, verify the bootstrap script, then run it:
+Download, verify the bootstrap script, then run it. Note the **two-step**
+form: the plain `gh attestation verify FILE --repo ... --signer-workflow
+...` command (no `--bundle`) requires `gh auth login`/`GH_TOKEN` even
+against a public repo, so it is *not* what's used here:
 
 ```bash
 curl -fsSL -o install-linux.sh \
   https://github.com/innovationtreehouse/cache/releases/latest/download/install-linux.sh
+DIGEST="$(sha256sum install-linux.sh | cut -d' ' -f1)"
+curl -fsSL -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/innovationtreehouse/cache/attestations/sha256:${DIGEST}" \
+  -o attestation.json
+python3 <<'PY'
+import json
+d = json.load(open("attestation.json", encoding="utf-8"))
+with open("bundle.jsonl", "w", encoding="utf-8") as f:
+    for att in d.get("attestations", []):
+        bundle = att.get("bundle")
+        if isinstance(bundle, dict):
+            f.write(json.dumps(bundle) + "\n")
+PY
 gh attestation verify install-linux.sh --repo innovationtreehouse/cache \
+  --bundle bundle.jsonl \
   --signer-workflow innovationtreehouse/cache/.github/workflows/release.yml \
   --deny-self-hosted-runners
 sudo bash install-linux.sh
 facility-cache status
 facility-cache version
 ```
+
+(`gh attestation verify --bundle` accepts one bundle object per line — JSON
+Lines — which is why every attestation for this file's SHA-256 is written
+out, not just the first.)
 
 `curl | sudo bash` still works and skips verifying the bootstrap script
 before it runs. The script installs `gh` if needed, then attests the
@@ -96,15 +121,32 @@ facility-cache log --path           # where the file lives
 
 ## Windows — first install from a Release
 
-Elevated PowerShell. Same public-repo, no-auth model as Linux — no token needed.
-Verify the bootstrap script before executing it:
+Elevated PowerShell. Same public-repo, no-auth model as Linux — no token
+needed. Verify the bootstrap script before executing it. Note the
+**two-step** form: `gh attestation verify FILE --repo ... --signer-workflow
+...` with no `--bundle` requires `gh auth login`/`GH_TOKEN` even against a
+public repo, so it is *not* what's used here:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 Invoke-WebRequest -UseBasicParsing `
   https://github.com/innovationtreehouse/cache/releases/latest/download/install-windows.ps1 `
   -OutFile install-windows.ps1
+$hash = (Get-FileHash install-windows.ps1 -Algorithm SHA256).Hash.ToLowerInvariant()
+$resp = Invoke-WebRequest -UseBasicParsing -Headers @{ Accept = 'application/vnd.github+json' } `
+  -Uri "https://api.github.com/repos/innovationtreehouse/cache/attestations/sha256:$hash"
+Add-Type -AssemblyName System.Web.Extensions
+$ser = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+$ser.MaxJsonLength = [int]::MaxValue
+$atts = $ser.DeserializeObject($resp.Content)['attestations']
+# Do NOT use ConvertFrom-Json/ConvertTo-Json here -- it corrupts the bundle.
+$lines = $atts | ForEach-Object { $ser.Serialize($_['bundle']) }
+# gh attestation verify --bundle accepts one bundle object per line (JSON
+# Lines), which is why every attestation is written out, not just the first.
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText("$PWD\bundle.jsonl", ($lines -join "`n"), $utf8NoBom)
 gh attestation verify .\install-windows.ps1 --repo innovationtreehouse/cache `
+  --bundle bundle.jsonl `
   --signer-workflow innovationtreehouse/cache/.github/workflows/release.yml `
   --deny-self-hosted-runners
 .\install-windows.ps1

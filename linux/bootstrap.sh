@@ -70,11 +70,13 @@ if ! curl -fsSL "${AUTH[@]}" -H "User-Agent: facility-cache-client-bootstrap" \
   exit 1
 fi
 
-python3 - "$TMP" <<'PY'
-import hashlib, json, os, ssl, sys, urllib.request
+python3 - "$TMP" "$REPO" "$REPO_ID" <<'PY'
+import hashlib, json, os, ssl, sys, urllib.error, urllib.request
 from pathlib import Path
 
 tmp = Path(sys.argv[1])
+repo = sys.argv[2]
+repo_id = sys.argv[3]
 release = json.loads((tmp / "release.json").read_text())
 assets = {a["name"]: a for a in release.get("assets") or []}
 if "manifest.json" not in assets:
@@ -126,6 +128,53 @@ if digest != expect:
     sys.exit(f"sha256 mismatch: {digest} != {expect}")
 (tmp / "asset-name").write_text(name)
 (tmp / "version").write_text(str(manifest.get("version") or ""))
+
+# Fetch every attestation bundle for this exact digest from the PUBLIC
+# (no-auth) GitHub attestations API, filtered to repo_id when pinned, and
+# write them out as JSON Lines for `gh attestation verify --bundle` (that
+# form accepts one bundle object per line). This is what actually needs no
+# `gh auth login`, unlike the bare `gh attestation verify --repo` form. A
+# token, when set, only lifts the unauthenticated 60/hr/IP rate limit on
+# this GET, and a stale one is retried without (see fetch_att below) rather
+# than silently disabling attestation.
+att_headers = {
+    "User-Agent": "facility-cache-client-bootstrap",
+    "Accept": "application/vnd.github+json",
+}
+att_url = f"https://api.github.com/repos/{repo}/attestations/sha256:{digest}"
+
+def fetch_att(url, hdrs):
+    req = urllib.request.Request(url, headers=hdrs)
+    with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+att_data = None
+try:
+    if token:
+        auth_headers = dict(att_headers, Authorization=f"Bearer {token}")
+        try:
+            att_data = fetch_att(att_url, auth_headers)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in (401, 403):
+                raise
+    if att_data is None:
+        att_data = fetch_att(att_url, att_headers)
+except (urllib.error.URLError, OSError, ValueError):
+    att_data = None
+
+if att_data is not None:
+    bundles = []
+    for att in att_data.get("attestations") or []:
+        if repo_id and str(att.get("repository_id")) != str(repo_id):
+            continue
+        bundle = att.get("bundle")
+        if isinstance(bundle, dict):
+            bundles.append(bundle)
+    if bundles:
+        with (tmp / "bundle.jsonl").open("w", encoding="utf-8") as bf:
+            for b in bundles:
+                bf.write(json.dumps(b) + "\n")
+
 print(name)
 PY
 
@@ -155,12 +204,15 @@ if [[ -r "$LINUX_DIR/lib/common.sh" && -r "$LINUX_DIR/lib/ensure_gh.sh" ]]; then
   fi
 fi
 
+# The bare `gh attestation verify --repo` form needs `gh auth login` even
+# for a public repo, which a fresh install never has. The python3 step above
+# already fetched the Sigstore bundle(s) from the PUBLIC (no-auth)
+# attestations API and wrote them as $TMP/bundle.jsonl, so verify offline
+# with --bundle instead — that genuinely needs no login.
 if command -v gh >/dev/null 2>&1; then
-  if [[ -n "$TOKEN" ]]; then
-    export GH_TOKEN="$TOKEN"
-  fi
-  if gh attestation verify "$TMP/$NAME" \
+  if [[ -s "$TMP/bundle.jsonl" ]] && gh attestation verify "$TMP/$NAME" \
     --repo "$REPO" \
+    --bundle "$TMP/bundle.jsonl" \
     --signer-workflow "${REPO}/.github/workflows/release.yml" \
     --deny-self-hosted-runners >/dev/null 2>&1; then
     ok "attested  ${NAME}"

@@ -66,27 +66,75 @@ Attestations (`actions/attest-build-provenance`):
 
 That is a Sigstore-backed record that those bytes were produced by this
 repo's `release.yml` on a GitHub-hosted runner, not hand-uploaded onto a
-Release. Clients with `gh` then verify the downloaded archive:
+Release. Clients with `gh` then verify the downloaded archive in two steps:
 
-```
-gh attestation verify FILE --repo innovationtreehouse/cache \
-  --signer-workflow innovationtreehouse/cache/.github/workflows/release.yml \
-  --deny-self-hosted-runners
-```
+1. Fetch every attestation for the file's SHA-256 from the **public**
+   GitHub attestations API — no credentials of any kind required for a
+   public repo:
+
+   ```
+   GET https://api.github.com/repos/innovationtreehouse/cache/attestations/sha256:<sha256 of FILE>
+   ```
+
+   Write each returned `attestations[i].bundle` out as its own line of a
+   JSON Lines file (`gh attestation verify --bundle` accepts one bundle
+   object per line). As cheap extra hardening, any attestation whose own
+   `repository_id` doesn't match the pinned numeric repo id is dropped
+   before this step, when that id is known.
+2. Verify that bundle file without any further GitHub API calls and
+   without a `gh login` — `gh` still consults Sigstore's public TUF root
+   over the network the first time its local cache is cold, so "offline"
+   here means no GitHub API/auth dependency, not "no network at all":
+
+   ```
+   gh attestation verify FILE --repo innovationtreehouse/cache \
+     --bundle bundle.jsonl \
+     --signer-workflow innovationtreehouse/cache/.github/workflows/release.yml \
+     --deny-self-hosted-runners
+   ```
+
+**This document and this client used to call the bare
+`gh attestation verify FILE --repo ... --signer-workflow ...` form
+directly (no `--bundle`) — that was wrong.** That form always requires an
+authenticated `gh` (`gh auth login`, or `GH_TOKEN`/`GITHUB_TOKEN` set) even
+against a fully public repo. The updater runs unattended as SYSTEM
+(Windows scheduled task) / root (systemd), which is never `gh auth login`'d,
+so it was silently exiting 4 ("please run: gh auth login") on every single
+run and quietly falling back to SHA-256-only — the "attestation
+unavailable" warning fired unconditionally and nobody could tell from the
+logs. The two-step bundle form above is what the client actually runs now,
+and it genuinely requires zero credentials. If a token happens to be
+configured (`github-token` file, `GITHUB_TOKEN` env var, or `GitHubToken`
+in Windows `config.json`), it is attached only to the bundle-fetch GET in
+step 1, purely to lift GitHub's unauthenticated 60 requests/hour/IP rate
+limit on that endpoint — it is never required and never gates whether
+verification runs.
 
 `--signer-workflow` so a different workflow in the repo with
 `attestations: write` cannot satisfy the check.
 `--deny-self-hosted-runners` so only GitHub-hosted runners count.
 
 Both updaters (`linux/sbin/facility-cache-update`,
-`windows/FacilityCache.psm1`) and both bootstraps run that check when `gh`
-is on PATH. It is a best-effort layer on top of SHA-256, not a replacement:
-if `gh` isn't installed or the check fails for any reason (offline,
-rate-limited, repo not public yet), the client logs a warning and falls
-back to SHA-256 alone, so a fleet without `gh` never bricks. A hard-fail
-mode (refuse to install without a verified attestation) is a deliberate
-future option once attestations have been live long enough to trust as a
-hard gate.
+`windows/FacilityCache.psm1`) and both bootstraps (`linux/bootstrap.sh`,
+`windows/Install-FromGitHub.ps1`) run that two-step check when `gh` is on
+PATH. It is a best-effort layer on top of SHA-256, not a replacement: if
+`gh` isn't installed, the bundle can't be fetched (offline, rate-limited,
+no attestation published, repo not public yet), or the `gh` call fails for
+any reason, the client logs a warning and falls back to SHA-256 alone, so
+a fleet without `gh` (or without network access to GitHub's attestations
+API) never bricks. A hard-fail mode (refuse to install without a verified
+attestation) is a deliberate future option once attestations have been
+live long enough to trust as a hard gate.
+
+`windows/Install-FromGitHub.ps1` carries its own copy of the verifier
+(~35 duplicated lines) rather than importing it from the release zip it is
+verifying: sourcing the checker from the archive under test would let a
+malicious release ship a module whose check always passes, or omit it to
+skip verification entirely. That duplication is intentional. The bundle
+check there also runs before the zip is ever extracted or its module
+imported, for the same reason. `linux/bootstrap.sh` doesn't have that
+problem the same way — its check is inline shell/Python from the start,
+not sourced from the tarball.
 
 Free GitHub Artifact Attestations require the repo to be **public** (or GitHub
 Enterprise Cloud with the add-on). If `innovationtreehouse/cache` ever goes
@@ -121,7 +169,14 @@ equivalent for that path.
 Uninstall removes the apt source and keyring this client wrote; it does
 not remove `gh` itself.
 
-No `gh auth login` is required for this public repo.
+No `gh auth login` is required for this public repo — the client only
+ever calls `gh attestation verify` in the two-step `--bundle` form
+described above, which needs no login. **The bare
+`gh attestation verify FILE --repo ... --signer-workflow ...` form shown
+in older docs, or run ad hoc by a human, does need `gh auth login` /
+`GH_TOKEN` first** — that requirement is a property of the bare form
+itself, not of this repo being public. See `README.md` for the two-step
+commands to run that ad hoc check without logging in.
 
 Recommended first install still verifies `install-linux.sh` /
 `install-windows.ps1` **before** executing them — that needs a `gh`
