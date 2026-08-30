@@ -1,0 +1,57 @@
+name: E2E
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Full client lifecycle against a fake facility cache, covering the positive
+# and negative flows: install, probe, on-site apply, real traffic through the
+# cache, wrong-address, off-site, unmanaged-file protection, update --check,
+# repo-id pin refusal, full update with attestation, uninstall.
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        base: ["ubuntu:24.04", "ubuntu:26.04"]
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Build fixture images
+        run: |
+          docker build -t fc-cache:e2e tests/e2e/cache
+          docker build -t fc-client:e2e --build-arg BASE=${{ matrix.base }} -f tests/e2e/linux/client.Dockerfile tests/e2e/linux
+
+      - name: Start cache and client (systemd) containers
+        run: |
+          docker network create --subnet 172.28.0.0/16 fcnet
+          docker run -d --name fc-cache --network fcnet --ip 172.28.0.50 \
+            --network-alias cache.facility.innovationtreehouse.org fc-cache:e2e
+          docker run -d --name fc-client --network fcnet --privileged \
+            -v "$PWD:/repo:ro" --tmpfs /run --tmpfs /run/lock fc-client:e2e
+          sleep 6
+          docker exec fc-client sh -c 'ps -p 1 -o comm='
+
+      - name: Run harness
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: docker exec -e GITHUB_TOKEN fc-client bash /repo/tests/e2e/linux/harness.sh
+
+      - name: Cache request log
+        if: always()
+        run: docker logs fc-cache 2>&1 | tail -40
+
+  windows-container:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Windows-container E2E (servercore ltsc2022 client, PS 5.1)
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: .\tests\e2e\windows\run-container.ps1 -RepoRoot $PWD.Path
