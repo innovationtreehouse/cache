@@ -110,6 +110,7 @@ try {
     $installer = Get-ChildItem -Path $tmp -Recurse -Filter 'Install-FacilityCache.ps1' | Select-Object -First 1
     if (-not $installer) { throw 'zip missing windows/Install-FacilityCache.ps1' }
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer.FullName
+    if ($LASTEXITCODE -ne 0) { throw "Install-FacilityCache.ps1 exited $LASTEXITCODE" }
 } finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 }
