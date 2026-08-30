@@ -1,0 +1,6 @@
+[tool.ruff]
+# linux/sbin/facility-cache-update has no .py extension, so ruff's default
+# extension-based discovery misses it entirely (it wasn't checked by CI
+# before this). Opt it in explicitly; everything else is discovered as usual.
+extend-include = ["linux/sbin/facility-cache-update"]
+line-length = 88
