@@ -75,18 +75,30 @@ deb [arch=${arch} signed-by=${GH_CLI_KEYRING}] ${url} stable main
 EOF
 }
 
-github_cli_apt_install() {
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update \
-    -o Dir::Etc::sourcelist="$GH_CLI_LIST" \
-    -o Dir::Etc::sourceparts=- \
-    -o APT::Get::List-Cleanup=0 >/dev/null 2>&1 || return 1
+github_cli_apt_install_pkg() {
   apt-get install -y \
     -o Dpkg::Options::=--force-confdef \
     -o Dpkg::Options::=--force-confold \
     gh >/dev/null 2>&1 || return 1
   hash -r 2>/dev/null || true
   command -v gh >/dev/null 2>&1
+}
+
+github_cli_apt_install() {
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update \
+    -o Dir::Etc::sourcelist="$GH_CLI_LIST" \
+    -o Dir::Etc::sourceparts=- \
+    -o APT::Get::List-Cleanup=0 >/dev/null 2>&1 || return 1
+  if github_cli_apt_install_pkg; then
+    return 0
+  fi
+  # gh Depends: git. The restricted update above only refreshes the gh source
+  # list, so on a machine whose Ubuntu package lists are missing or stale (a
+  # fresh minimal install, a cleaned image) git is unresolvable and the
+  # install fails with unmet dependencies. Refresh everything once, retry.
+  apt-get update >/dev/null 2>&1 || true
+  github_cli_apt_install_pkg
 }
 
 github_cli_ensure() {
