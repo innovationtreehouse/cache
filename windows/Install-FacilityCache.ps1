@@ -131,8 +131,11 @@ $updateName = 'FacilityCache-Update'
 Unregister-ScheduledTask -TaskName $updateName -Confirm:$false -ErrorAction SilentlyContinue
 $updateArg = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$(Join-Path $dest 'FacilityCache-Update.ps1')`""
 $updateAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $updateArg
-$updateDaily = New-ScheduledTaskTrigger -Daily -At 3:17am
-$updateDaily.RandomDelay = (New-TimeSpan -Minutes 30)
+# -RandomDelay must be given to the cmdlet: assigning the property afterwards
+# serializes the TimeSpan as '00:30:00' instead of ISO8601 'PT30M' on some
+# Windows builds (seen on servercore ltsc2022), and Register-ScheduledTask
+# then rejects the task XML with HRESULT 0x80041318.
+$updateDaily = New-ScheduledTaskTrigger -Daily -At 3:17am -RandomDelay (New-TimeSpan -Minutes 30)
 $updateTriggers = @(
     (New-ScheduledTaskTrigger -AtStartup),
     $updateDaily
