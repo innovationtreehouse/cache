@@ -812,6 +812,8 @@ function Update-FacilityCacheClient {
         $installer = Get-ChildItem -Path $tmp -Recurse -Filter 'Install-FacilityCache.ps1' | Select-Object -First 1
         if (-not $installer) { throw 'zip missing windows/Install-FacilityCache.ps1' }
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer.FullName -NoRestartDocker
+        # & powershell.exe never throws; without this a failed installer was logged as "updated".
+        if ($LASTEXITCODE -ne 0) { throw "Install-FacilityCache.ps1 exited $LASTEXITCODE" }
         Write-FcStepOk "v$remote"
         Write-FacilityCacheState @{
             installed_version = $remote
@@ -821,6 +823,7 @@ function Update-FacilityCacheClient {
         }
         Write-FcFinish -Ok $true -Message "now running v$remote"
     } catch {
+        Write-FacilityCacheState @{ installed_version = $local; latest_version = $remote; last_result = "update failed: $($_.Exception.Message)" }
         Write-FcFail $_
         Write-FcFinish -Ok $false -Message 'update failed'
         throw
