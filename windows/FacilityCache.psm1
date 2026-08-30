@@ -391,27 +391,35 @@ function Merge-DockerDaemonJson {
                 foreach ($key in $loaded.Keys) { $hash[$key] = $loaded[$key] }
             }
         }
-        $mirrors = New-Object 'System.Collections.Generic.List[object]'
+        $mirrors = New-Object 'System.Collections.Generic.List[string]'
         if ($hash.ContainsKey('registry-mirrors') -and $null -ne $hash['registry-mirrors']) {
             foreach ($m in @($hash['registry-mirrors'])) { [void]$mirrors.Add($m) }
         }
         if (-not $mirrors.Contains($mirror)) { $mirrors.Insert(0, $mirror) }
-        $regs = New-Object 'System.Collections.Generic.List[object]'
+        $regs = New-Object 'System.Collections.Generic.List[string]'
         if ($hash.ContainsKey('insecure-registries') -and $null -ne $hash['insecure-registries']) {
             foreach ($r in @($hash['insecure-registries'])) { [void]$regs.Add($r) }
         }
         foreach ($item in $insecureWanted) {
             if (-not $regs.Contains($item)) { [void]$regs.Add($item) }
         }
-        $hash['registry-mirrors'] = $mirrors
-        $hash['insecure-registries'] = $regs
+        # The .ToArray() is load-bearing, not cosmetic: a plain List[string]
+        # assigned into the dictionary still crashes JavaScriptSerializer the
+        # same way List[object] did (PowerShell's indexer still wraps the
+        # List itself in a PSObject); .ToArray() yields a real string[],
+        # which serializes cleanly.
+        $hash['registry-mirrors'] = $mirrors.ToArray()
+        $hash['insecure-registries'] = $regs.ToArray()
         $json = $ser.Serialize($hash)
         $old = ''
         if ($exists) { $old = (Get-Content -LiteralPath $path -Raw).Trim() }
         if ($json -ne $old) {
             $bak = "$path.facility-cache.bak"
             if ($exists -and -not (Test-Path $bak)) { Copy-Item $path $bak }
-            Set-Content -LiteralPath $path -Value $json -Encoding UTF8
+            # Set-Content -Encoding UTF8 always adds a BOM in PS 5.1, which
+            # dockerd's Go JSON parser rejects. Write UTF-8 without one.
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText($path, $json, $utf8NoBom)
             $changed = $true
         }
     }
@@ -439,23 +447,25 @@ function Remove-DockerMirrors {
         $hash = New-Object 'System.Collections.Generic.Dictionary[string,object]'
         foreach ($key in $loaded.Keys) { $hash[$key] = $loaded[$key] }
         if ($hash.ContainsKey('registry-mirrors')) {
-            $kept = New-Object 'System.Collections.Generic.List[object]'
+            $kept = New-Object 'System.Collections.Generic.List[string]'
             foreach ($m in @($hash['registry-mirrors'])) {
                 if ($m -ne $mirror) { [void]$kept.Add($m) }
             }
-            if ($kept.Count -gt 0) { $hash['registry-mirrors'] = $kept } else { [void]$hash.Remove('registry-mirrors') }
+            if ($kept.Count -gt 0) { $hash['registry-mirrors'] = $kept.ToArray() } else { [void]$hash.Remove('registry-mirrors') }
         }
         if ($hash.ContainsKey('insecure-registries')) {
-            $kept = New-Object 'System.Collections.Generic.List[object]'
+            $kept = New-Object 'System.Collections.Generic.List[string]'
             foreach ($r in @($hash['insecure-registries'])) {
                 if ($insecure -notcontains $r) { [void]$kept.Add($r) }
             }
-            if ($kept.Count -gt 0) { $hash['insecure-registries'] = $kept } else { [void]$hash.Remove('insecure-registries') }
+            if ($kept.Count -gt 0) { $hash['insecure-registries'] = $kept.ToArray() } else { [void]$hash.Remove('insecure-registries') }
         }
         if ($hash.Count -eq 0) {
             Remove-Item -LiteralPath $path -Force
         } else {
-            Set-Content -LiteralPath $path -Value $ser.Serialize($hash) -Encoding UTF8
+            # Same BOM concern as Merge-DockerDaemonJson above.
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText($path, $ser.Serialize($hash), $utf8NoBom)
         }
     }
 }
