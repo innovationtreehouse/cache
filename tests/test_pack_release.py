@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 import sys
 import tarfile
 import unittest
@@ -21,9 +22,24 @@ spec.loader.exec_module(pack_release)
 
 class Sha256FileTest(unittest.TestCase):
     def test_matches_hashlib(self):
-        target = ROOT / "VERSION"
+        target = ROOT / "README.md"
         expected = hashlib.sha256(target.read_bytes()).hexdigest()
         self.assertEqual(pack_release.sha256_file(target), expected)
+
+
+class ResolveVersionTest(unittest.TestCase):
+    def test_env_wins_and_v_prefix_stripped(self):
+        os.environ["FC_RELEASE_VERSION"] = "v9.9.9"
+        try:
+            self.assertEqual(pack_release.resolve_version(), "9.9.9")
+        finally:
+            del os.environ["FC_RELEASE_VERSION"]
+
+    def test_fallback_is_git_describe_or_dev_marker(self):
+        os.environ.pop("FC_RELEASE_VERSION", None)
+        v = pack_release.resolve_version()
+        self.assertTrue(v)
+        self.assertFalse(v.startswith("v"))
 
 
 class PackTest(unittest.TestCase):
@@ -31,14 +47,20 @@ class PackTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        pack_release.main()
+        os.environ["FC_RELEASE_VERSION"] = "9.9.9"
+        try:
+            pack_release.main()
+        finally:
+            del os.environ["FC_RELEASE_VERSION"]
         cls.dist = pack_release.DIST
-        cls.version = (ROOT / "VERSION").read_text().strip().lstrip("v")
+        cls.version = "9.9.9"
         cls.prefix = f"facility-cache-client-{cls.version}"
 
-    def test_all_assets_present(self):
+    def test_all_assets_present_and_nothing_unattested(self):
+        # Exactly the attested set: a stray file (e.g. the generated VERSION)
+        # would be published by `gh release upload dist/*` without provenance.
         names = {p.name for p in self.dist.iterdir()}
-        self.assertLessEqual(
+        self.assertEqual(
             {
                 "facility-cache-client-linux.tar.gz",
                 "facility-cache-client-windows.zip",
@@ -49,6 +71,15 @@ class PackTest(unittest.TestCase):
             },
             names,
         )
+
+    def test_archives_ship_generated_version_file(self):
+        with tarfile.open(self.dist / "facility-cache-client-linux.tar.gz") as tar:
+            fh = tar.extractfile(f"{self.prefix}/VERSION")
+            self.assertEqual(fh.read().decode().strip(), self.version)
+        with zipfile.ZipFile(self.dist / "facility-cache-client-windows.zip") as zf:
+            self.assertEqual(
+                zf.read(f"{self.prefix}/VERSION").decode().strip(), self.version
+            )
 
     def test_manifest_hashes_match_artifacts(self):
         manifest = json.loads((self.dist / "manifest.json").read_text())
