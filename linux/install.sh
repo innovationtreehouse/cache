@@ -50,8 +50,16 @@ EOF
   esac
 done
 
-VER="unknown"
-[[ -f "$ROOT/VERSION" ]] && VER="$(tr -d ' v\n' <"$ROOT/VERSION")"
+# Release tarballs ship a generated VERSION file; a git checkout has none —
+# the version lives in git tags. Fall back to git describe, then a dev marker.
+VER="0.0.0-dev"
+if [[ -f "$ROOT/VERSION" ]]; then
+  VER="$(tr -d ' v\n' <"$ROOT/VERSION")"
+elif command -v git >/dev/null 2>&1; then
+  _described="$(git -C "$ROOT" describe --tags --match 'v*' --dirty 2>/dev/null || true)"
+  [[ -n "$_described" ]] && VER="${_described#v}"
+  unset _described
+fi
 ui_init install 8
 if [[ "$FROM_UPDATE" -eq 0 ]]; then
   ui_banner "facility-cache-client" "install  v${VER}"
@@ -91,9 +99,9 @@ install -m 0644 "${HERE}/lib/ensure_gh.sh" "${STAGE}/lib/ensure_gh.sh"
 if [[ -f "${ROOT}/defaults.env" ]]; then
   install -m 0644 "${ROOT}/defaults.env" "${STAGE}/lib/defaults"
 fi
-if [[ -f "${ROOT}/VERSION" ]]; then
-  install -m 0644 "${ROOT}/VERSION" "${STAGE}/lib/VERSION"
-fi
+# Always record the resolved version (tarball VERSION, git describe, or dev).
+printf '%s\n' "$VER" >"${STAGE}/lib/VERSION"
+chmod 0644 "${STAGE}/lib/VERSION"
 install -m 0755 "${HERE}/bin/facility-cache" "${STAGE}/bin/facility-cache"
 install -m 0755 "${HERE}/bin/facility-cache-probe" "${STAGE}/bin/facility-cache-probe"
 install -m 0755 "${HERE}/bin/facility-apt-proxy" "${STAGE}/bin/facility-apt-proxy"

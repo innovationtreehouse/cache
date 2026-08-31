@@ -184,9 +184,12 @@ Show-FacilityCacheLog -PathOnly
 
 ## Publishing a release
 
-1. Bump `VERSION` (semver, no `v` prefix).
-2. Change `defaults.env` / `defaults.json` if host, ports, or repo should move.
-3. Tag and push:
+The tag is the version — there is no `VERSION` file in the repo; the
+release workflow derives it from the pushed tag and generates the `VERSION`
+file that ships inside the archives.
+
+1. Change `defaults.env` / `defaults.json` if host, ports, or repo should move.
+2. Tag and push:
 
 ```bash
 git tag v1.0.1
@@ -206,7 +209,9 @@ the Release is published. Clients with `gh` verify the archive they download.
 See `docs/SECURITY.md`. Clients pick a new release up on the next daily check
 (or immediately with `facility-cache update`).
 
-Pack locally without tagging: `python3 scripts/pack-release.py`
+Pack locally without tagging: `python3 scripts/pack-release.py` — the
+version comes from `git describe --tags` (e.g. `1.0.1-3-gabc1234`), or from
+`FC_RELEASE_VERSION` if set.
 
 ## UniFi (once, on the facility DHCP)
 
