@@ -197,7 +197,7 @@ ui_spin_start() {
     if [[ "$_ui_unicode" -eq 1 ]]; then
       frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
     else
-      frames='|/-\'
+      frames="|/-\\"
     fi
     local i=0 n=${#frames} ch
     while :; do

@@ -22,7 +22,8 @@ jobs:
           files="$( { find linux -type f -name '*.sh'
                       grep -rlE '^#!.*/(bash|sh)$' linux --binary-files=without-match --exclude-dir=__pycache__ --exclude='*.sh'
                     } | sort -u)"
-          shellcheck $files
+          # -S warning matches ci.yml's gate; info-level nits should not redden a release run
+          shellcheck -S warning $files
 
       - name: PSScriptAnalyzer (pwsh preinstalled on ubuntu-latest)
         shell: pwsh
