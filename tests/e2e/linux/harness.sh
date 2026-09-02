@@ -102,7 +102,7 @@ ck "environment.d drop-in" $?
 sec "T5 real traffic through the ubuntu cache"
 /usr/local/bin/facility-apt-proxy http://archive.ubuntu.com/ubuntu | head -1 | grep -q "http://$FQDN:3142"
 ck "apt proxy auto-detect -> cache" $?
-/usr/local/bin/facility-apt-proxy "http://$FQDN:3142/https://cli.github.com/x" | grep -q DIRECT
+/usr/local/bin/facility-apt-proxy "http://$FQDN:3142/cli.github.com/x" | grep -q DIRECT
 ck "apt proxy: cache-addressed URI -> DIRECT (no double-proxy)" $?
 apt-get update >/tmp/aptup 2>&1
 ck "apt-get update THROUGH cache proxy" $? "$(tail -1 /tmp/aptup)"

@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # GitHub CLI (gh) via GitHub's apt repo. Sourced, not executed.
 # On the facility LAN the source URL is rewritten through apt-cacher-ng
-# (http://CACHE_HOST:APT_PORT/https://cli.github.com/packages) so the .deb
+# (http://CACHE_HOST:APT_PORT/cli.github.com/packages) so the .deb
 # is cached; off-site it is vanilla HTTPS.
 
 GH_CLI_KEYRING="${GH_CLI_KEYRING:-/etc/apt/keyrings/facility-cache-githubcli.gpg}"
@@ -10,8 +10,10 @@ GH_CLI_UPSTREAM="${GH_CLI_UPSTREAM:-https://cli.github.com/packages}"
 GH_CLI_KEY_UPSTREAM="${GH_CLI_KEY_UPSTREAM:-https://cli.github.com/packages/githubcli-archive-keyring.gpg}"
 
 github_cli_rewrite() {
-  # $1 = https://host/path → http://CACHE_HOST:APT_PORT/https://host/path
-  printf 'http://%s:%s/%s' "$CACHE_HOST" "$APT_PORT" "$1"
+  # $1 = https://host/path → http://CACHE_HOST:APT_PORT/host/path
+  # apt-cacher-ng maps the path to an implicit backend; a literal https://
+  # in the path returns 406, so strip the scheme.
+  printf 'http://%s:%s/%s' "$CACHE_HOST" "$APT_PORT" "${1#*://}"
 }
 
 github_cli_packages_url() {
