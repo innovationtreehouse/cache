@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Stand-in for the facility cache host.
 
-3142  apt-cacher-ng-style proxy: forwards absolute-URI proxy requests and
-      apt-cacher-ng's "/https://host/path" rewritten form to the real upstream.
+3142  apt-cacher-ng-style proxy: forwards absolute-URI proxy requests, the
+      legacy "/https://host/path" form, and the "/host/path" implicit-backend
+      form to the real upstream.
 3141  devpi-style: /root/pypi/+simple/<x> forwards to https://pypi.org/simple/<x>
 4873  verdaccio-style: forwards to https://registry.npmjs.org
 5000/5001  registry stubs: /v2/ -> {}
@@ -27,7 +28,10 @@ def upstream_for(port, path):
         if path.startswith("http://") or path.startswith("https://"):
             return path  # absolute-URI proxy request
         if path.startswith("/https://") or path.startswith("/http://"):
-            return path[1:]  # apt-cacher-ng rewritten form
+            return path[1:]  # legacy scheme-in-path form
+        # apt-cacher-ng implicit-backend form: /<host>/<path> → https upstream
+        if "." in path[1:].split("/", 1)[0]:
+            return "https:/" + path
         return None
     if port == 3141 and path.startswith("/root/pypi/+simple/"):
         return "https://pypi.org/simple/" + path[len("/root/pypi/+simple/") :]
